@@ -24,24 +24,23 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SubmissionService {
 
-    private final SubmissionRepository submissionRepository;
-    private final SubmissionImageRepository submissionImageRepository;
-    private final PanelNumberRepository panelNumberRepository;
-    private final SurveyorRepository surveyorRepository;
-    private final S3Service s3Service;
+    private final SubmissionRepository         submissionRepository;
+    private final SubmissionImageRepository    submissionImageRepository;
+    private final SubmissionAuditLogRepository auditLogRepository;
+    private final PanelNumberRepository        panelNumberRepository;
+    private final SurveyorRepository           surveyorRepository;
+    private final S3Service                    s3Service;
 
     private static final List<String> ALLOWED_TYPES = List.of("image/png", "image/jpeg");
     private static final long MAX_SIZE = 5 * 1024 * 1024;
 
-    // ── Admin: create submission record ──────────────────────────────────────
+    // ── Admin: create ─────────────────────────────────────────────────────────
 
     @Transactional
     public SubmissionResponse adminCreate(AdminSubmissionRequest request) {
-
         if (submissionRepository.existsByServiceNumber(request.getServiceNumber())) {
             throw new DuplicateServiceNumberException(request.getServiceNumber());
         }
-
         Submission submission = Submission.builder()
                 .serviceNumber(request.getServiceNumber())
                 .customerName(request.getCustomerName())
@@ -55,22 +54,36 @@ public class SubmissionService {
                 .surveyorName(request.getSurveyorName())
                 .status(SubmissionStatus.PENDING)
                 .build();
-
         Submission saved = submissionRepository.save(submission);
         savePanelNumbers(saved, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
-
-        log.info("Admin created submission for service number: {}", saved.getServiceNumber());
+        log.info("Admin created submission: {}", saved.getServiceNumber());
         return mapToResponse(saved);
     }
 
-    // ── Admin: update any field ───────────────────────────────────────────────
+    @Transactional
+    public SubmissionResponse adminCreate(AdminSubmissionRequest request,
+                                          Map<ImageType, MultipartFile> imageFiles) throws IOException {
+        SubmissionResponse created = adminCreate(request);
+        if (imageFiles != null && !imageFiles.isEmpty()) {
+            Submission submission = getSubmissionById(created.getId());
+            uploadImages(submission, imageFiles);
+            return mapToResponse(submissionRepository.save(submission));
+        }
+        return created;
+    }
+
+    // ── Admin: update — editNote mandatory, audit log written ─────────────────
 
     @Transactional
-    public SubmissionResponse adminUpdate(Long id, AdminSubmissionRequest request,
+    public SubmissionResponse adminUpdate(Long id,
+                                          AdminEditRequest request,
                                           Map<ImageType, MultipartFile> imageFiles) throws IOException {
 
         Submission submission = getSubmissionById(id);
+
+        String editorEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
 
         submission.setServiceNumber(request.getServiceNumber());
         submission.setCustomerName(request.getCustomerName());
@@ -91,11 +104,19 @@ public class SubmissionService {
         }
 
         Submission saved = submissionRepository.save(submission);
-        log.info("Admin updated submission id: {}", id);
+
+
+        auditLogRepository.save(SubmissionAuditLog.builder()
+                .submission(saved)
+                .editedByEmail(editorEmail)
+                .editNote(request.getEditNote())
+                .build());
+
+        log.info("Admin {} updated submission id: {}", editorEmail, id);
         return mapToResponse(saved);
     }
 
-    // ── Admin: delete submission ──────────────────────────────────────────────
+    // ── Admin: delete ─────────────────────────────────────────────────────────
 
     @Transactional
     public void adminDelete(Long id) {
@@ -105,7 +126,7 @@ public class SubmissionService {
         log.info("Admin deleted submission id: {}", id);
     }
 
-    // ── Admin: bulk import from Excel (called from ExportService) ────────────
+    // ── Admin: bulk import ────────────────────────────────────────────────────
 
     @Transactional
     public void bulkCreate(List<AdminSubmissionRequest> requests) {
@@ -113,23 +134,19 @@ public class SubmissionService {
             if (!submissionRepository.existsByServiceNumber(request.getServiceNumber())) {
                 adminCreate(request);
             } else {
-                log.warn("Skipped duplicate service number during bulk import: {}",
-                        request.getServiceNumber());
+                log.warn("Skipped duplicate during bulk import: {}", request.getServiceNumber());
             }
         }
     }
 
-    // ── Admin: get all with filters ───────────────────────────────────────────
+    // ── Admin: list with filters ──────────────────────────────────────────────
 
     public PageResponse<SubmissionSummaryResponse> adminGetAll(
             Long surveyorId, SubmissionStatus status, String division,
             String section, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
-        Pageable safePage = PageRequest.of(
-                pageable.getPageNumber(),
-                Math.min(pageable.getPageSize(), 50),
-                pageable.getSort()
-        );
+        Pageable safePage = PageRequest.of(pageable.getPageNumber(),
+                Math.min(pageable.getPageSize(), 50), pageable.getSort());
 
         Page<SubmissionSummaryResponse> page = submissionRepository
                 .findAllFiltered(surveyorId, status, division, section, from, to, safePage)
@@ -138,19 +155,54 @@ public class SubmissionService {
         return buildPageResponse(page);
     }
 
-    // ── Surveyor: lookup by service number ────────────────────────────────────
+    // ── Admin: audit log for a submission ─────────────────────────────────────
+
+    public List<AuditLogResponse> getAuditLog(Long submissionId) {
+        getSubmissionById(submissionId); // verify exists
+        return auditLogRepository
+                .findBySubmissionIdOrderByEditedAtDesc(submissionId)
+                .stream()
+                .map(a -> AuditLogResponse.builder()
+                        .id(a.getId())
+                        .editedByEmail(a.getEditedByEmail())
+                        .editNote(a.getEditNote())
+                        .editedAt(a.getEditedAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    // ── Surveyor: lookup — ownership enforced ─────────────────────────────────
 
     public SubmissionResponse lookupByServiceNumber(String serviceNumber) {
-        Submission submission = submissionRepository.findByServiceNumber(serviceNumber)
+
+        String currentEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        Surveyor currentSurveyor = surveyorRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
+
+        Submission submission = submissionRepository
+                .findByServiceNumber(serviceNumber)
                 .orElseThrow(() -> new SubmissionNotFoundException(serviceNumber));
+
+        // Owned by a different surveyor — hide it completely
+        if (submission.getSurveyor() != null &&
+                !submission.getSurveyor().getId().equals(currentSurveyor.getId())) {
+            throw new SubmissionNotFoundException(serviceNumber);
+        }
+
         return mapToResponse(submission);
     }
 
-    // ── Surveyor: submit (complete the form) ──────────────────────────────────
+    // ── Surveyor: submit ──────────────────────────────────────────────────────
 
     @Transactional
     public SubmissionResponse surveyorSubmit(SurveyorSubmitRequest request,
                                              Map<ImageType, MultipartFile> imageFiles) throws IOException {
+
+        String currentEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
 
         Submission submission = submissionRepository
                 .findByServiceNumber(request.getServiceNumber())
@@ -160,12 +212,14 @@ public class SubmissionService {
             throw new SubmissionAlreadySubmittedException(request.getServiceNumber());
         }
 
-        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-        Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
-                .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
+        // Already claimed by a different surveyor
+        if (submission.getSurveyor() != null &&
+                !submission.getSurveyor().getId().equals(surveyor.getId())) {
+            throw new SubmissionNotFoundException(request.getServiceNumber());
+        }
 
-        submission.setSurveyorName(request.getSurveyorName());
-        submission.setSurveyor(surveyor);
+        submission.setSurveyorName(request.getSurveyorName()); // display only
+        submission.setSurveyor(surveyor);                       // ownership via FK
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
         submission.setStatus(SubmissionStatus.SUBMITTED);
 
@@ -177,29 +231,23 @@ public class SubmissionService {
         }
 
         Submission saved = submissionRepository.save(submission);
-        log.info("Surveyor {} submitted service number: {}", currentEmail, request.getServiceNumber());
+        log.info("Surveyor {} submitted: {}", currentEmail, request.getServiceNumber());
         return mapToResponse(saved);
     }
 
-    // ── Surveyor: edit after submission ───────────────────────────────────────
+    // ── Surveyor: edit ────────────────────────────────────────────────────────
 
     @Transactional
     public SubmissionResponse surveyorUpdate(Long id, SurveyorUpdateRequest request,
                                              Map<ImageType, MultipartFile> imageFiles) throws IOException {
-
         Submission submission = getSubmissionById(id);
         validateSurveyorOwnership(submission);
-
-        // surveyor name intentionally NOT updated here
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
-
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
-
         if (imageFiles != null && !imageFiles.isEmpty()) {
             uploadImages(submission, imageFiles);
         }
-
         Submission saved = submissionRepository.save(submission);
         log.info("Surveyor updated submission id: {}", id);
         return mapToResponse(saved);
@@ -216,54 +264,46 @@ public class SubmissionService {
         log.info("Surveyor deleted submission id: {}", id);
     }
 
-    // ── Surveyor: own submissions with filters ────────────────────────────────
+    // ── Surveyor: own list ────────────────────────────────────────────────────
 
     public PageResponse<SubmissionSummaryResponse> surveyorGetOwn(
             SubmissionStatus status, LocalDateTime from,
             LocalDateTime to, Pageable pageable) {
 
-        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        String currentEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
         Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
                 .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
 
-        Pageable safePage = PageRequest.of(
-                pageable.getPageNumber(),
-                Math.min(pageable.getPageSize(), 50),
-                pageable.getSort()
-        );
+        Pageable safePage = PageRequest.of(pageable.getPageNumber(),
+                Math.min(pageable.getPageSize(), 50), pageable.getSort());
 
-        Page<SubmissionSummaryResponse> page = submissionRepository
+        return buildPageResponse(submissionRepository
                 .findBySurveyorFiltered(surveyor.getId(), status, from, to, safePage)
-                .map(this::mapToSummary);
-
-        return buildPageResponse(page);
+                .map(this::mapToSummary));
     }
 
-    // ── Surveyor: today's submissions ─────────────────────────────────────────
+    // ── Surveyor: today ───────────────────────────────────────────────────────
 
     public PageResponse<SubmissionSummaryResponse> surveyorGetToday(Pageable pageable) {
 
-        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        String currentEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
         Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
                 .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
 
-        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
-        LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
+        LocalDateTime start = LocalDate.now().atStartOfDay();
+        LocalDateTime end   = LocalDate.now().atTime(LocalTime.MAX);
 
-        Pageable safePage = PageRequest.of(
-                pageable.getPageNumber(),
-                Math.min(pageable.getPageSize(), 50),
-                pageable.getSort()
-        );
+        Pageable safePage = PageRequest.of(pageable.getPageNumber(),
+                Math.min(pageable.getPageSize(), 50), pageable.getSort());
 
-        Page<SubmissionSummaryResponse> page = submissionRepository
-                .findTodayBySurveyor(surveyor.getId(), startOfDay, endOfDay, safePage)
-                .map(this::mapToSummary);
-
-        return buildPageResponse(page);
+        return buildPageResponse(submissionRepository
+                .findTodayBySurveyor(surveyor.getId(), start, end, safePage)
+                .map(this::mapToSummary));
     }
 
-    // ── Shared: get single submission ─────────────────────────────────────────
+    // ── Shared: get by id ─────────────────────────────────────────────────────
 
     public SubmissionResponse getById(Long id) {
         return mapToResponse(getSubmissionById(id));
@@ -277,35 +317,29 @@ public class SubmissionService {
     }
 
     private void validateSurveyorOwnership(Submission submission) {
-        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        String currentEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
         if (submission.getSurveyor() == null ||
                 !submission.getSurveyor().getEmail().equals(currentEmail)) {
             throw new AccessDeniedException("This submission does not belong to you");
         }
     }
 
-    private void savePanelNumbers(Submission submission, String p1, String p2, String p3, String p4) {
-        List<String> panels = List.of(
-                p1 != null ? p1 : "",
-                p2 != null ? p2 : "",
-                p3 != null ? p3 : "",
-                p4 != null ? p4 : ""
-        );
-        for (int i = 0; i < panels.size(); i++) {
-            if (!panels.get(i).isBlank()) {
-                PanelNumber pn = PanelNumber.builder()
-                        .panelNumber(panels.get(i))
-                        .sequence(i + 1)
-                        .submission(submission)
-                        .build();
-                panelNumberRepository.save(pn);
-            }
-        }
+    private void savePanelNumbers(Submission s, String p1, String p2, String p3, String p4) {
+        List.of(p1 != null ? p1 : "", p2 != null ? p2 : "",
+                        p3 != null ? p3 : "", p4 != null ? p4 : "")
+                .stream()
+                .filter(p -> !p.isBlank())
+                .forEach(p -> {
+                    int seq = (int) panelNumberRepository.countBySubmissionId(s.getId()) + 1;
+                    panelNumberRepository.save(PanelNumber.builder()
+                            .panelNumber(p).sequence(seq).submission(s).build());
+                });
     }
 
-    private void updatePanelNumbers(Submission submission, String p1, String p2, String p3, String p4) {
-        panelNumberRepository.deleteBySubmissionId(submission.getId());
-        savePanelNumbers(submission, p1, p2, p3, p4);
+    private void updatePanelNumbers(Submission s, String p1, String p2, String p3, String p4) {
+        panelNumberRepository.deleteBySubmissionId(s.getId());
+        savePanelNumbers(s, p1, p2, p3, p4);
     }
 
     private void uploadImages(Submission submission,
@@ -313,15 +347,11 @@ public class SubmissionService {
         for (Map.Entry<ImageType, MultipartFile> entry : imageFiles.entrySet()) {
             MultipartFile file = entry.getValue();
             if (file == null || file.isEmpty()) continue;
-
-            if (!ALLOWED_TYPES.contains(file.getContentType())) {
+            if (!ALLOWED_TYPES.contains(file.getContentType()))
                 throw new InvalidFileException("Only PNG and JPEG files are allowed");
-            }
-            if (file.getSize() > MAX_SIZE) {
+            if (file.getSize() > MAX_SIZE)
                 throw new InvalidFileException("File size exceeds 5MB limit");
-            }
 
-            // Replace existing image of same type if present
             submissionImageRepository.findBySubmissionId(submission.getId())
                     .stream()
                     .filter(img -> img.getImageType() == entry.getKey())
@@ -331,13 +361,11 @@ public class SubmissionService {
                         submissionImageRepository.delete(existing);
                     });
 
-            String url = s3Service.uploadFile(file);
-            SubmissionImage image = SubmissionImage.builder()
-                    .imageUrl(url)
+            submissionImageRepository.save(SubmissionImage.builder()
+                    .imageUrl(s3Service.uploadFile(file))
                     .imageType(entry.getKey())
                     .submission(submission)
-                    .build();
-            submissionImageRepository.save(image);
+                    .build());
         }
     }
 
@@ -347,25 +375,6 @@ public class SubmissionService {
     }
 
     private SubmissionResponse mapToResponse(Submission s) {
-        List<SubmissionResponse.PanelNumberDto> panels =
-                panelNumberRepository.findBySubmissionIdOrderBySequenceAsc(s.getId())
-                        .stream()
-                        .map(p -> SubmissionResponse.PanelNumberDto.builder()
-                                .sequence(p.getSequence())
-                                .panelNumber(p.getPanelNumber())
-                                .build())
-                        .collect(Collectors.toList());
-
-        List<SubmissionResponse.ImageDto> images =
-                submissionImageRepository.findBySubmissionId(s.getId())
-                        .stream()
-                        .map(img -> SubmissionResponse.ImageDto.builder()
-                                .id(img.getId())
-                                .imageType(img.getImageType().name())
-                                .imageUrl(img.getImageUrl())
-                                .build())
-                        .collect(Collectors.toList());
-
         return SubmissionResponse.builder()
                 .id(s.getId())
                 .serviceNumber(s.getServiceNumber())
@@ -379,8 +388,16 @@ public class SubmissionService {
                 .inverterSerialNumber(s.getInverterSerialNumber())
                 .surveyorName(s.getSurveyorName())
                 .surveyorEmail(s.getSurveyor() != null ? s.getSurveyor().getEmail() : null)
-                .panelNumbers(panels)
-                .images(images)
+                .panelNumbers(panelNumberRepository
+                        .findBySubmissionIdOrderBySequenceAsc(s.getId()).stream()
+                        .map(p -> SubmissionResponse.PanelNumberDto.builder()
+                                .sequence(p.getSequence()).panelNumber(p.getPanelNumber()).build())
+                        .collect(Collectors.toList()))
+                .images(submissionImageRepository.findBySubmissionId(s.getId()).stream()
+                        .map(img -> SubmissionResponse.ImageDto.builder()
+                                .id(img.getId()).imageType(img.getImageType().name())
+                                .imageUrl(img.getImageUrl()).build())
+                        .collect(Collectors.toList()))
                 .status(s.getStatus().name())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt())
@@ -389,26 +406,18 @@ public class SubmissionService {
 
     private SubmissionSummaryResponse mapToSummary(Submission s) {
         return SubmissionSummaryResponse.builder()
-                .id(s.getId())
-                .serviceNumber(s.getServiceNumber())
-                .customerName(s.getCustomerName())
-                .division(s.getDivision())
-                .section(s.getSection())
-                .surveyorName(s.getSurveyorName())
-                .status(s.getStatus().name())
-                .createdAt(s.getCreatedAt())
+                .id(s.getId()).serviceNumber(s.getServiceNumber())
+                .customerName(s.getCustomerName()).division(s.getDivision())
+                .section(s.getSection()).surveyorName(s.getSurveyorName())
+                .status(s.getStatus().name()).createdAt(s.getCreatedAt())
                 .build();
     }
 
     private PageResponse<SubmissionSummaryResponse> buildPageResponse(
             Page<SubmissionSummaryResponse> page) {
         return PageResponse.<SubmissionSummaryResponse>builder()
-                .content(page.getContent())
-                .page(page.getNumber())
-                .size(page.getSize())
-                .totalElements(page.getTotalElements())
-                .totalPages(page.getTotalPages())
-                .last(page.isLast())
-                .build();
+                .content(page.getContent()).page(page.getNumber()).size(page.getSize())
+                .totalElements(page.getTotalElements()).totalPages(page.getTotalPages())
+                .last(page.isLast()).build();
     }
 }

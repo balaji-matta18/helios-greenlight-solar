@@ -94,9 +94,8 @@ public class S3Service {
         if (originalFilename == null || originalFilename.isBlank()) {
             return "file";
         }
-        // Strip path separators (e.g. ../../etc/passwd)
+
         String cleaned = StringUtils.cleanPath(originalFilename);
-        // Keep only safe characters
         String safe = cleaned.replaceAll("[^a-zA-Z0-9._-]", "_");
         return safe.isBlank() ? "file" : safe;
     }

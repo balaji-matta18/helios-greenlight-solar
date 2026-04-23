@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface SubmissionRepository extends JpaRepository<Submission, Long> {
@@ -17,7 +18,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     Optional<Submission> findByServiceNumber(String serviceNumber);
 
-    // Surveyor — own submissions with optional date filter
+    // Used by stats service
+    long countByStatus(SubmissionStatus status);
+
+    // Surveyor — own submissions with optional filters
     @Query("""
             SELECT s FROM Submission s
             WHERE s.surveyor.id = :surveyorId
@@ -67,7 +71,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             Pageable pageable
     );
 
-    // Export — same filters, no pagination
+    // Export — no pagination, eager fetch
     @Query("""
             SELECT s FROM Submission s
             LEFT JOIN FETCH s.images
@@ -79,7 +83,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
             """)
-    java.util.List<Submission> findAllFilteredForExport(
+    List<Submission> findAllFilteredForExport(
             @Param("surveyorId") Long surveyorId,
             @Param("status") SubmissionStatus status,
             @Param("division") String division,
@@ -87,4 +91,25 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to
     );
+
+    // Stats — submissions per day for the last 7 days
+    // Returns Object[] { LocalDate, Long count }
+    @Query("""
+            SELECT CAST(s.createdAt AS LocalDate), COUNT(s)
+            FROM Submission s
+            WHERE s.createdAt >= :since
+            GROUP BY CAST(s.createdAt AS LocalDate)
+            ORDER BY CAST(s.createdAt AS LocalDate) ASC
+            """)
+    List<Object[]> countByDaySince(@Param("since") LocalDateTime since);
+
+    // Stats — submission count per surveyor
+    // Returns Object[] { surveyorId (Long), count (Long) }
+    @Query("""
+            SELECT s.surveyor.id, COUNT(s)
+            FROM Submission s
+            WHERE s.surveyor IS NOT NULL
+            GROUP BY s.surveyor.id
+            """)
+    List<Object[]> countBySurveyor();
 }

@@ -9,9 +9,9 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.productapp.backend</groupId>
-    <artifactId>SolarFreelance</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-    <name>SolarFreelance</name>
+    <artifactId>HeliosGreenLightSolar</artifactId>
+    <version>0.0.1</version>
+    <name>HeliosGreenLightSolar</name>
     <description>Freelance</description>
     <url/>
     <licenses>

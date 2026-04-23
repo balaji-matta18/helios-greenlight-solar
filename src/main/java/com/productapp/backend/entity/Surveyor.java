@@ -2,7 +2,6 @@ package com.productapp.backend.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -24,6 +23,9 @@ public class Surveyor {
 
     @Column(nullable = false, length = 15)
     private String phone;
+
+    @Column(nullable = false)
+    private String password;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -2,14 +2,14 @@ package com.productapp.backend.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 
 @Entity
 @Table(
         name = "admins",
         indexes = {
-                @Index(name = "idx_admin_username", columnList = "username")
+                @Index(name = "idx_admin_username", columnList = "username"),
+                @Index(name = "idx_admin_email",    columnList = "email")
         }
 )
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder

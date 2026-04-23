@@ -8,4 +8,5 @@ import java.util.List;
 public interface PanelNumberRepository extends JpaRepository<PanelNumber, Long> {
     List<PanelNumber> findBySubmissionIdOrderBySequenceAsc(Long submissionId);
     void deleteBySubmissionId(Long submissionId);
+    long countBySubmissionId(Long submissionId);
 }

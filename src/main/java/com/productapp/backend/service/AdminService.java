@@ -24,35 +24,30 @@ public class AdminService {
     private final JwtService jwtService;
     private final OtpService otpService;
 
-    // Step 1 — validate password, send 2FA OTP
+    // Step 1 — verify email + password, send 2FA OTP
     public ApiResponse login(AdminLoginRequest request) {
 
-        Admin admin = adminRepository.findByUsername(request.getUsername())
+        Admin admin = adminRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
-                    log.warn("Login failed — admin not found: {}", request.getUsername());
-                    return new AdminNotFoundException(request.getUsername());
+                    log.warn("Login failed — admin not found: {}", request.getEmail());
+                    return new AdminNotFoundException(request.getEmail());
                 });
 
         if (!passwordEncoder.matches(request.getPassword(), admin.getPassword())) {
-            log.warn("Login failed — wrong password for admin: {}", request.getUsername());
+            log.warn("Login failed — wrong password for: {}", request.getEmail());
             throw new InvalidCredentialsException();
         }
 
         otpService.sendOtp(admin.getEmail(), OtpType.ADMIN_2FA);
-        log.info("Admin password verified, 2FA OTP sent: {}", admin.getUsername());
-
+        log.info("Admin password verified, 2FA OTP sent: {}", admin.getEmail());
         return new ApiResponse("Password verified. OTP sent to your registered email.");
     }
 
-    // Step 2 — verify 2FA OTP, return JWT
+    // Step 2 — verify OTP, return JWT
     public AuthResponse verify2fa(String email, String otpValue) {
-
         otpService.verifyOtpOnly(email, otpValue, OtpType.ADMIN_2FA);
-
         String token = jwtService.generateToken(email, "ROLE_ADMIN");
-
         log.info("Admin 2FA verified, JWT issued for: {}", email);
-
         return AuthResponse.builder()
                 .token(token)
                 .role("ROLE_ADMIN")

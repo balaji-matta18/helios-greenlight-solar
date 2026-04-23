@@ -20,39 +20,41 @@ public class AuthController {
     private final AdminService adminService;
     private final SurveyorService surveyorService;
 
-    // ── Surveyor auth ─────────────────────────────────────────────────────────
-
-    @PostMapping("/surveyor/send-otp")
-    public ResponseEntity<ApiResponse> surveyorSendOtp(@Valid @RequestBody SendOtpRequest request) {
-        otpService.sendOtp(request.getEmail(), OtpType.SURVEYOR_LOGIN);
-        return ResponseEntity.ok(new ApiResponse("OTP sent to " + request.getEmail()));
+    // ── Surveyor: step 1 — email + password → sends OTP ──────────────────────
+    @PostMapping("/surveyor/login")
+    public ResponseEntity<ApiResponse> surveyorLogin(
+            @Valid @RequestBody SurveyorLoginRequest request) {
+        return ResponseEntity.ok(surveyorService.login(request));
     }
 
+    // ── Surveyor: step 2 — OTP → JWT ─────────────────────────────────────────
     @PostMapping("/surveyor/verify-otp")
-    public ResponseEntity<AuthResponse> surveyorVerifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
-        AuthResponse response = otpService.verifyOtpAndLogin(
-                request.getEmail(), request.getOtp(), OtpType.SURVEYOR_LOGIN);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<AuthResponse> surveyorVerifyOtp(
+            @Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.ok(otpService.verifyOtpAndLogin(
+                request.getEmail(), request.getOtp(), OtpType.SURVEYOR_LOGIN));
     }
 
+    // ── Surveyor: signup ──────────────────────────────────────────────────────
     @PostMapping("/surveyor/signup")
-    public ResponseEntity<ApiResponse> surveyorSignup(@Valid @RequestBody SurveyorSignupRequest request) {
+    public ResponseEntity<ApiResponse> surveyorSignup(
+            @Valid @RequestBody SurveyorSignupRequest request) {
         surveyorService.signup(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse("Surveyor registered successfully"));
     }
 
-    // ── Admin auth ────────────────────────────────────────────────────────────
-
+    // ── Admin: step 1 — email + password → sends OTP ─────────────────────────
     @PostMapping("/admin/login")
-    public ResponseEntity<ApiResponse> adminLogin(@Valid @RequestBody AdminLoginRequest request) {
-        ApiResponse response = adminService.login(request);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<ApiResponse> adminLogin(
+            @Valid @RequestBody AdminLoginRequest request) {
+        return ResponseEntity.ok(adminService.login(request));
     }
 
+    // ── Admin: step 2 — OTP → JWT ─────────────────────────────────────────────
     @PostMapping("/admin/verify-2fa")
-    public ResponseEntity<AuthResponse> adminVerify2fa(@Valid @RequestBody VerifyOtpRequest request) {
-        AuthResponse response = adminService.verify2fa(request.getEmail(), request.getOtp());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<AuthResponse> adminVerify2fa(
+            @Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.ok(adminService.verify2fa(request.getEmail(), request.getOtp()));
     }
 }
