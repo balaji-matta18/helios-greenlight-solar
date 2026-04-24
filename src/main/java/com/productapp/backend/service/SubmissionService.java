@@ -11,6 +11,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.data.domain.PageImpl;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -145,16 +146,27 @@ public class SubmissionService {
             Long surveyorId, SubmissionStatus status, String division,
             String section, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
-        Pageable safePage = PageRequest.of(pageable.getPageNumber(),
-                Math.min(pageable.getPageSize(), 50), pageable.getSort());
+        List<SubmissionSummaryResponse> filtered = submissionRepository.findAll().stream()
+                .filter(s -> surveyorId == null ||
+                        (s.getSurveyor() != null && s.getSurveyor().getId().equals(surveyorId)))
+                .filter(s -> status == null || s.getStatus() == status)
+                .filter(s -> division == null || division.equals(s.getDivision()))
+                .filter(s -> section == null || section.equals(s.getSection()))
+                .filter(s -> from == null || !s.getCreatedAt().isBefore(from))
+                .filter(s -> to == null || !s.getCreatedAt().isAfter(to))
+                .map(this::mapToSummary)
+                .collect(Collectors.toList());
 
-        Page<SubmissionSummaryResponse> page = submissionRepository
-                .findAllFiltered(surveyorId, status, division, section, from, to, safePage)
-                .map(this::mapToSummary);
+        int start = (int) pageable.getOffset();
+        int end   = Math.min(start + pageable.getPageSize(), filtered.size());
+        List<SubmissionSummaryResponse> pageContent =
+                start >= filtered.size() ? List.of() : filtered.subList(start, end);
+
+        Page<SubmissionSummaryResponse> page =
+                new PageImpl<>(pageContent, pageable, filtered.size());
 
         return buildPageResponse(page);
     }
-
     // ── Admin: audit log for a submission ─────────────────────────────────────
 
     public List<AuditLogResponse> getAuditLog(Long submissionId) {
@@ -267,40 +279,53 @@ public class SubmissionService {
     // ── Surveyor: own list ────────────────────────────────────────────────────
 
     public PageResponse<SubmissionSummaryResponse> surveyorGetOwn(
-            SubmissionStatus status, LocalDateTime from,
-            LocalDateTime to, Pageable pageable) {
+            SubmissionStatus status, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
-        String currentEmail = SecurityContextHolder.getContext()
-                .getAuthentication().getName();
+        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
         Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
                 .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
 
-        Pageable safePage = PageRequest.of(pageable.getPageNumber(),
-                Math.min(pageable.getPageSize(), 50), pageable.getSort());
+        List<SubmissionSummaryResponse> filtered = submissionRepository.findAll().stream()
+                .filter(s -> s.getSurveyor() != null &&
+                        s.getSurveyor().getId().equals(surveyor.getId()))
+                .filter(s -> status == null || s.getStatus() == status)
+                .filter(s -> from == null || !s.getCreatedAt().isBefore(from))
+                .filter(s -> to == null || !s.getCreatedAt().isAfter(to))
+                .map(this::mapToSummary)
+                .collect(Collectors.toList());
 
-        return buildPageResponse(submissionRepository
-                .findBySurveyorFiltered(surveyor.getId(), status, from, to, safePage)
-                .map(this::mapToSummary));
+        int start = (int) pageable.getOffset();
+        int end   = Math.min(start + pageable.getPageSize(), filtered.size());
+        List<SubmissionSummaryResponse> pageContent =
+                start >= filtered.size() ? List.of() : filtered.subList(start, end);
+
+        return buildPageResponse(new PageImpl<>(pageContent, pageable, filtered.size()));
     }
 
     // ── Surveyor: today ───────────────────────────────────────────────────────
 
     public PageResponse<SubmissionSummaryResponse> surveyorGetToday(Pageable pageable) {
 
-        String currentEmail = SecurityContextHolder.getContext()
-                .getAuthentication().getName();
+        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
         Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
                 .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
 
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end   = LocalDate.now().atTime(LocalTime.MAX);
 
-        Pageable safePage = PageRequest.of(pageable.getPageNumber(),
-                Math.min(pageable.getPageSize(), 50), pageable.getSort());
+        List<SubmissionSummaryResponse> filtered = submissionRepository.findAll().stream()
+                .filter(s -> s.getSurveyor() != null &&
+                        s.getSurveyor().getId().equals(surveyor.getId()))
+                .filter(s -> !s.getCreatedAt().isBefore(start) && !s.getCreatedAt().isAfter(end))
+                .map(this::mapToSummary)
+                .collect(Collectors.toList());
 
-        return buildPageResponse(submissionRepository
-                .findTodayBySurveyor(surveyor.getId(), start, end, safePage)
-                .map(this::mapToSummary));
+        int p     = (int) pageable.getOffset();
+        int pEnd  = Math.min(p + pageable.getPageSize(), filtered.size());
+        List<SubmissionSummaryResponse> pageContent =
+                p >= filtered.size() ? List.of() : filtered.subList(p, pEnd);
+
+        return buildPageResponse(new PageImpl<>(pageContent, pageable, filtered.size()));
     }
 
     // ── Shared: get by id ─────────────────────────────────────────────────────
