@@ -421,7 +421,7 @@ public class SubmissionService {
                 .images(submissionImageRepository.findBySubmissionId(s.getId()).stream()
                         .map(img -> SubmissionResponse.ImageDto.builder()
                                 .id(img.getId()).imageType(img.getImageType().name())
-                                .imageUrl(img.getImageUrl()).build())
+                                .imageUrl(s3Service.generatePresignedUrl(img.getImageUrl())).build())
                         .collect(Collectors.toList()))
                 .status(s.getStatus().name())
                 .createdAt(s.getCreatedAt())

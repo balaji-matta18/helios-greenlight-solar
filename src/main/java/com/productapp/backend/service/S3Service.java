@@ -11,6 +11,10 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import java.time.Duration;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -21,6 +25,8 @@ import java.util.UUID;
 public class S3Service {
 
     private final S3Client s3Client;
+
+    private final S3Presigner s3Presigner;
 
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
@@ -107,5 +113,28 @@ public class S3Service {
     private String extractKeyFromUrl(String fileUrl) {
         String prefix = String.format("https://%s.s3.%s.amazonaws.com/", bucketName, region);
         return fileUrl.replace(prefix, "");
+    }
+
+    public String generatePresignedUrl(String s3Url) {
+        try {
+            // Extract the key from the full S3 URL
+            String key = s3Url.substring(s3Url.indexOf(".amazonaws.com/") + 15);
+
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .build();
+
+            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                    .signatureDuration(Duration.ofHours(1))
+                    .getObjectRequest(getObjectRequest)
+                    .build();
+
+            return s3Presigner.presignGetObject(presignRequest)
+                    .url().toString();
+        } catch (Exception e) {
+            log.error("Failed to generate presigned URL for: {}", s3Url, e);
+            return s3Url; // fallback to original
+        }
     }
 }
