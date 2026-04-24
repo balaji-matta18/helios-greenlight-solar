@@ -56,8 +56,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             SELECT s FROM Submission s
             WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
             AND (:status IS NULL OR s.status = :status)
-            AND (:division IS NULL OR LOWER(s.division) = LOWER(:division))
-            AND (:section IS NULL OR LOWER(s.section) = LOWER(:section))
+            AND (:division IS NULL OR s.division = :division)
+            AND (:section IS NULL OR s.section = :section)
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
             """)
@@ -78,8 +78,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             LEFT JOIN FETCH s.panelNumbers
             WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
             AND (:status IS NULL OR s.status = :status)
-            AND (:division IS NULL OR LOWER(s.division) = LOWER(:division))
-            AND (:section IS NULL OR LOWER(s.section) = LOWER(:section))
+            AND (:division IS NULL OR s.division = :division)
+            AND (:section IS NULL OR s.section = :section)
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
             """)
