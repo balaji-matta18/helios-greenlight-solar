@@ -48,18 +48,17 @@ public class ExportService {
     // ── Excel export ──────────────────────────────────────────────────────────
 
     public byte[] exportExcel(Long surveyorId, SubmissionStatus status,
-                              String division, String section,
+                              String division, String serviceNumber,
                               LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, division, section, from, to);
+                .findAllFilteredForExport(surveyorId, status, division, serviceNumber, from, to);
 
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
             Sheet sheet = workbook.createSheet("Submissions");
 
-            // Header style
             CellStyle headerStyle = workbook.createCellStyle();
             headerStyle.setFillForegroundColor(IndexedColors.ROYAL_BLUE.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -68,7 +67,6 @@ public class ExportService {
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
 
-            // Header row
             org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
             for (int i = 0; i < HEADERS.length; i++) {
                 org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
@@ -77,7 +75,6 @@ public class ExportService {
                 sheet.setColumnWidth(i, 5000);
             }
 
-            // Data rows
             int rowNum = 1;
             for (Submission s : submissions) {
                 org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
@@ -111,11 +108,11 @@ public class ExportService {
     // ── PDF export ────────────────────────────────────────────────────────────
 
     public byte[] exportPdf(Long surveyorId, SubmissionStatus status,
-                            String division, String section,
+                            String division, String serviceNumber,
                             LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, division, section, from, to);
+                .findAllFilteredForExport(surveyorId, status, division, serviceNumber, from, to);
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Document document = new Document(PageSize.A4.rotate());

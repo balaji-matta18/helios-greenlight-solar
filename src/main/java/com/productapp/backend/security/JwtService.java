@@ -35,6 +35,17 @@ public class JwtService {
                 .compact();
     }
 
+    public String generateToken(String subject, String role, String name) {
+        return Jwts.builder()
+                .subject(subject)
+                .claim("role", role)
+                .claim("name", name)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + expirationMs))
+                .signWith(getKey())
+                .compact();
+    }
+
     public String extractSubject(String token) {
         return parseClaims(token).getSubject();
     }

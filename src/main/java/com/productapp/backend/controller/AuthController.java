@@ -20,14 +20,12 @@ public class AuthController {
     private final AdminService adminService;
     private final SurveyorService surveyorService;
 
-    // ── Surveyor: step 1 — email + password → sends OTP ──────────────────────
     @PostMapping("/surveyor/login")
     public ResponseEntity<ApiResponse> surveyorLogin(
             @Valid @RequestBody SurveyorLoginRequest request) {
         return ResponseEntity.ok(surveyorService.login(request));
     }
 
-    // ── Surveyor: step 2 — OTP → JWT ─────────────────────────────────────────
     @PostMapping("/surveyor/verify-otp")
     public ResponseEntity<AuthResponse> surveyorVerifyOtp(
             @Valid @RequestBody VerifyOtpRequest request) {
@@ -35,7 +33,6 @@ public class AuthController {
                 request.getEmail(), request.getOtp(), OtpType.SURVEYOR_LOGIN));
     }
 
-    // ── Surveyor: signup ──────────────────────────────────────────────────────
     @PostMapping("/surveyor/signup")
     public ResponseEntity<ApiResponse> surveyorSignup(
             @Valid @RequestBody SurveyorSignupRequest request) {
@@ -44,17 +41,28 @@ public class AuthController {
                 .body(new ApiResponse("Surveyor registered successfully"));
     }
 
-    // ── Admin: step 1 — email + password → sends OTP ─────────────────────────
     @PostMapping("/admin/login")
     public ResponseEntity<ApiResponse> adminLogin(
             @Valid @RequestBody AdminLoginRequest request) {
         return ResponseEntity.ok(adminService.login(request));
     }
 
-    // ── Admin: step 2 — OTP → JWT ─────────────────────────────────────────────
     @PostMapping("/admin/verify-2fa")
     public ResponseEntity<AuthResponse> adminVerify2fa(
             @Valid @RequestBody VerifyOtpRequest request) {
         return ResponseEntity.ok(adminService.verify2fa(request.getEmail(), request.getOtp()));
+    }
+
+    @PostMapping("/surveyor/forgot-password")
+    public ResponseEntity<ApiResponse> surveyorForgotPassword(
+            @Valid @RequestBody SendOtpRequest request) {
+        return ResponseEntity.ok(surveyorService.sendForgotPasswordOtp(request.getEmail()));
+    }
+
+    @PostMapping("/surveyor/reset-password")
+    public ResponseEntity<ApiResponse> surveyorResetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+        return ResponseEntity.ok(surveyorService.resetPassword(
+                request.getEmail(), request.getOtp(), request.getNewPassword()));
     }
 }

@@ -23,7 +23,7 @@ public class SurveyorService {
     private final PasswordEncoder passwordEncoder;
     private final OtpService otpService;
 
-    // Signup — password is hashed before saving
+
     public void signup(SurveyorSignupRequest request) {
 
         if (!allowedEmailRepository.existsByEmail(request.getEmail())) {
@@ -45,7 +45,7 @@ public class SurveyorService {
         log.info("Surveyor registered: {}", request.getEmail());
     }
 
-    // Login step 1 — verify email + password, send OTP
+
     public ApiResponse login(SurveyorLoginRequest request) {
 
         Surveyor surveyor = surveyorRepository.findByEmail(request.getEmail())
@@ -67,5 +67,30 @@ public class SurveyorService {
     public Surveyor getByEmail(String email) {
         return surveyorRepository.findByEmail(email)
                 .orElseThrow(() -> new SurveyorNotFoundException(email));
+    }
+    
+    public ApiResponse sendForgotPasswordOtp(String email) {
+        surveyorRepository.findByEmail(email)
+                .orElseThrow(() -> {
+                    log.warn("Forgot-password attempt for unknown email: {}", email);
+                    return new SurveyorNotFoundException(email);
+                });
+
+        otpService.sendOtp(email, OtpType.PASSWORD_RESET);
+        log.info("Password-reset OTP sent for: {}", email);
+        return new ApiResponse("OTP sent to your registered email.");
+    }
+
+    public ApiResponse resetPassword(String email, String otpValue, String newPassword) {
+        otpService.verifyOtpOnly(email, otpValue, OtpType.PASSWORD_RESET);
+
+        Surveyor surveyor = surveyorRepository.findByEmail(email)
+                .orElseThrow(() -> new SurveyorNotFoundException(email));
+
+        surveyor.setPassword(passwordEncoder.encode(newPassword));
+        surveyorRepository.save(surveyor);
+
+        log.info("Password reset successfully for: {}", email);
+        return new ApiResponse("Password reset successfully.");
     }
 }

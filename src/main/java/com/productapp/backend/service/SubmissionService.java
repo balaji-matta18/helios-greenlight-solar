@@ -35,7 +35,6 @@ public class SubmissionService {
     private static final List<String> ALLOWED_TYPES = List.of("image/png", "image/jpeg");
     private static final long MAX_SIZE = 5 * 1024 * 1024;
 
-    // ── Admin: create ─────────────────────────────────────────────────────────
 
     @Transactional
     public SubmissionResponse adminCreate(AdminSubmissionRequest request) {
@@ -74,7 +73,6 @@ public class SubmissionService {
         return created;
     }
 
-    // ── Admin: update — editNote mandatory, audit log written ─────────────────
 
     @Transactional
     public SubmissionResponse adminUpdate(Long id,
@@ -117,7 +115,6 @@ public class SubmissionService {
         return mapToResponse(saved);
     }
 
-    // ── Admin: delete ─────────────────────────────────────────────────────────
 
     @Transactional
     public void adminDelete(Long id) {
@@ -127,7 +124,6 @@ public class SubmissionService {
         log.info("Admin deleted submission id: {}", id);
     }
 
-    // ── Admin: bulk import ────────────────────────────────────────────────────
 
     @Transactional
     public void bulkCreate(List<AdminSubmissionRequest> requests) {
@@ -140,18 +136,19 @@ public class SubmissionService {
         }
     }
 
-    // ── Admin: list with filters ──────────────────────────────────────────────
+
 
     public PageResponse<SubmissionSummaryResponse> adminGetAll(
             Long surveyorId, SubmissionStatus status, String division,
-            String section, LocalDateTime from, LocalDateTime to, Pageable pageable) {
+            String serviceNumber, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
         List<SubmissionSummaryResponse> filtered = submissionRepository.findAll().stream()
                 .filter(s -> surveyorId == null ||
                         (s.getSurveyor() != null && s.getSurveyor().getId().equals(surveyorId)))
                 .filter(s -> status == null || s.getStatus() == status)
-                .filter(s -> division == null || division.equals(s.getDivision()))
-                .filter(s -> section == null || section.equals(s.getSection()))
+                .filter(s -> division == null ||
+                        (s.getDivision() != null && s.getDivision().toLowerCase().contains(division.toLowerCase())))
+                .filter(s -> serviceNumber == null || serviceNumber.equals(s.getServiceNumber()))
                 .filter(s -> from == null || !s.getCreatedAt().isBefore(from))
                 .filter(s -> to == null || !s.getCreatedAt().isAfter(to))
                 .map(this::mapToSummary)
@@ -167,7 +164,7 @@ public class SubmissionService {
 
         return buildPageResponse(page);
     }
-    // ── Admin: audit log for a submission ─────────────────────────────────────
+
 
     public List<AuditLogResponse> getAuditLog(Long submissionId) {
         getSubmissionById(submissionId); // verify exists
@@ -183,7 +180,7 @@ public class SubmissionService {
                 .collect(Collectors.toList());
     }
 
-    // ── Surveyor: lookup — ownership enforced ─────────────────────────────────
+
 
     public SubmissionResponse lookupByServiceNumber(String serviceNumber) {
 
@@ -205,7 +202,7 @@ public class SubmissionService {
         return mapToResponse(submission);
     }
 
-    // ── Surveyor: submit ──────────────────────────────────────────────────────
+
 
     @Transactional
     public SubmissionResponse surveyorSubmit(SurveyorSubmitRequest request,
@@ -224,7 +221,6 @@ public class SubmissionService {
             throw new SubmissionAlreadySubmittedException(request.getServiceNumber());
         }
 
-        // Already claimed by a different surveyor
         if (submission.getSurveyor() != null &&
                 !submission.getSurveyor().getId().equals(surveyor.getId())) {
             throw new SubmissionNotFoundException(request.getServiceNumber());
@@ -247,7 +243,6 @@ public class SubmissionService {
         return mapToResponse(saved);
     }
 
-    // ── Surveyor: edit ────────────────────────────────────────────────────────
 
     @Transactional
     public SubmissionResponse surveyorUpdate(Long id, SurveyorUpdateRequest request,
@@ -265,7 +260,7 @@ public class SubmissionService {
         return mapToResponse(saved);
     }
 
-    // ── Surveyor: delete ──────────────────────────────────────────────────────
+
 
     @Transactional
     public void surveyorDelete(Long id) {
@@ -276,7 +271,7 @@ public class SubmissionService {
         log.info("Surveyor deleted submission id: {}", id);
     }
 
-    // ── Surveyor: own list ────────────────────────────────────────────────────
+
 
     public PageResponse<SubmissionSummaryResponse> surveyorGetOwn(
             SubmissionStatus status, LocalDateTime from, LocalDateTime to, Pageable pageable) {
@@ -302,7 +297,6 @@ public class SubmissionService {
         return buildPageResponse(new PageImpl<>(pageContent, pageable, filtered.size()));
     }
 
-    // ── Surveyor: today ───────────────────────────────────────────────────────
 
     public PageResponse<SubmissionSummaryResponse> surveyorGetToday(Pageable pageable) {
 
@@ -328,13 +322,11 @@ public class SubmissionService {
         return buildPageResponse(new PageImpl<>(pageContent, pageable, filtered.size()));
     }
 
-    // ── Shared: get by id ─────────────────────────────────────────────────────
 
     public SubmissionResponse getById(Long id) {
         return mapToResponse(getSubmissionById(id));
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
 
     private Submission getSubmissionById(Long id) {
         return submissionRepository.findById(id)

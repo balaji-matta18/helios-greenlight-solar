@@ -18,7 +18,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     Optional<Submission> findByServiceNumber(String serviceNumber);
 
-    // Used by stats service
     long countByStatus(SubmissionStatus status);
 
     // Surveyor — own submissions with optional filters
@@ -56,8 +55,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             SELECT s FROM Submission s
             WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
             AND (:status IS NULL OR s.status = :status)
-            AND (:division IS NULL OR s.division = :division)
-            AND (:section IS NULL OR s.section = :section)
+            AND (:division IS NULL OR LOWER(s.division) LIKE LOWER(CONCAT('%', :division, '%')))
+            AND (:serviceNumber IS NULL OR s.serviceNumber = :serviceNumber)
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
             """)
@@ -65,7 +64,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             @Param("surveyorId") Long surveyorId,
             @Param("status") SubmissionStatus status,
             @Param("division") String division,
-            @Param("section") String section,
+            @Param("serviceNumber") String serviceNumber,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to,
             Pageable pageable
@@ -78,8 +77,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             LEFT JOIN FETCH s.panelNumbers
             WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
             AND (:status IS NULL OR s.status = :status)
-            AND (:division IS NULL OR s.division = :division)
-            AND (:section IS NULL OR s.section = :section)
+            AND (:division IS NULL OR LOWER(s.division) LIKE LOWER(CONCAT('%', :division, '%')))
+            AND (:serviceNumber IS NULL OR s.serviceNumber = :serviceNumber)
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
             """)
@@ -87,13 +86,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             @Param("surveyorId") Long surveyorId,
             @Param("status") SubmissionStatus status,
             @Param("division") String division,
-            @Param("section") String section,
+            @Param("serviceNumber") String serviceNumber,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to
     );
 
     // Stats — submissions per day for the last 7 days
-    // Returns Object[] { LocalDate, Long count }
     @Query("""
             SELECT CAST(s.createdAt AS LocalDate), COUNT(s)
             FROM Submission s
@@ -104,7 +102,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     List<Object[]> countByDaySince(@Param("since") LocalDateTime since);
 
     // Stats — submission count per surveyor
-    // Returns Object[] { surveyorId (Long), count (Long) }
     @Query("""
             SELECT s.surveyor.id, COUNT(s)
             FROM Submission s

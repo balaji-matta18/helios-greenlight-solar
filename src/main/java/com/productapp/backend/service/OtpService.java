@@ -94,17 +94,18 @@
 
 
 
-
 package com.productapp.backend.service;
 
 import com.productapp.backend.dto.AuthResponse;
 import com.productapp.backend.entity.Otp;
 import com.productapp.backend.entity.OtpType;
+import com.productapp.backend.entity.Surveyor;
 import com.productapp.backend.exception.InvalidOtpException;
 import com.productapp.backend.exception.OtpExpiredException;
 import com.productapp.backend.exception.OtpNotFoundException;
 import com.productapp.backend.exception.TooManyOtpRequestsException;
 import com.productapp.backend.repository.OtpRepository;
+import com.productapp.backend.repository.SurveyorRepository;
 import com.productapp.backend.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -121,6 +122,7 @@ public class OtpService {
     private final OtpRepository otpRepository;
     private final JwtService jwtService;
     private final EmailService emailService;
+    private final SurveyorRepository surveyorRepository;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final int OTP_COOLDOWN_SECONDS = 60;
@@ -175,12 +177,17 @@ public class OtpService {
         log.info("OTP verified for email: {} type: {}", email, otpType);
     }
 
-    // Used by surveyor login — verifies OTP then returns JWT
+    // Used by surveyor login — verifies OTP then returns JWT with name claim
     public AuthResponse verifyOtpAndLogin(String email, String otpValue, OtpType otpType) {
 
         verifyOtpOnly(email, otpValue, otpType);
 
-        String token = jwtService.generateToken(email, "ROLE_SURVEYOR");
+        // Look up the surveyor's registered name to embed in the JWT
+        String name = surveyorRepository.findByEmail(email)
+                .map(Surveyor::getName)
+                .orElse(email);
+
+        String token = jwtService.generateToken(email, "ROLE_SURVEYOR", name);
 
         return AuthResponse.builder()
                 .token(token)

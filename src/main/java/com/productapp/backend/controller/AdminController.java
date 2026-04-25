@@ -78,13 +78,13 @@ public class AdminController {
             @RequestParam(required = false) Long surveyorId,
             @RequestParam(required = false) SubmissionStatus status,
             @RequestParam(required = false) String division,
-            @RequestParam(required = false) String section,
+            @RequestParam(required = false) String serviceNumber,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             Pageable pageable) {
         return ResponseEntity.ok(
                 submissionService.adminGetAll(surveyorId, status, division,
-                        section, from, to, pageable));
+                        serviceNumber, from, to, pageable));
     }
 
     @Operation(summary = "Get single submission detail")
@@ -113,11 +113,11 @@ public class AdminController {
             @RequestParam(required = false) Long surveyorId,
             @RequestParam(required = false) SubmissionStatus status,
             @RequestParam(required = false) String division,
-            @RequestParam(required = false) String section,
+            @RequestParam(required = false) String serviceNumber,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to
     ) throws IOException {
-        byte[] data = exportService.exportExcel(surveyorId, status, division, section, from, to);
+        byte[] data = exportService.exportExcel(surveyorId, status, division, serviceNumber, from, to);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"submissions.xlsx\"")
                 .contentType(MediaType.parseMediaType(
@@ -131,11 +131,11 @@ public class AdminController {
             @RequestParam(required = false) Long surveyorId,
             @RequestParam(required = false) SubmissionStatus status,
             @RequestParam(required = false) String division,
-            @RequestParam(required = false) String section,
+            @RequestParam(required = false) String serviceNumber,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to
     ) throws IOException {
-        byte[] data = exportService.exportPdf(surveyorId, status, division, section, from, to);
+        byte[] data = exportService.exportPdf(surveyorId, status, division, serviceNumber, from, to);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"submissions.pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
