@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# Maven build output (builder stage handles this fresh)
+target/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test reports
+**/test-output/
+**/surefire-reports/
+
+# Docker files themselves
+Dockerfile
+.dockerignore
