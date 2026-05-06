@@ -21,6 +21,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.awt.Color;
@@ -47,18 +48,28 @@ public class ExportService {
 
     // ── Excel export ──────────────────────────────────────────────────────────
 
+    @Transactional(readOnly = true)
     public byte[] exportExcel(Long surveyorId, SubmissionStatus status,
                               String division, String serviceNumber,
                               LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, division, serviceNumber, from, to);
+                .findAllFilteredForExport(surveyorId, status, serviceNumber, from, to);
+
+        // Case-insensitive division filter applied in Java (avoids LOWER(bytea) PostgreSQL type error)
+        if (division != null && !division.isBlank()) {
+            final String divLower = division.toLowerCase();
+            submissions = submissions.stream()
+                    .filter(s -> s.getDivision() != null && s.getDivision().toLowerCase().contains(divLower))
+                    .collect(java.util.stream.Collectors.toList());
+        }
 
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
             Sheet sheet = workbook.createSheet("Submissions");
 
+            // Header style
             CellStyle headerStyle = workbook.createCellStyle();
             headerStyle.setFillForegroundColor(IndexedColors.ROYAL_BLUE.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -67,6 +78,7 @@ public class ExportService {
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
 
+            // Header row
             org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
             for (int i = 0; i < HEADERS.length; i++) {
                 org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
@@ -75,6 +87,7 @@ public class ExportService {
                 sheet.setColumnWidth(i, 5000);
             }
 
+            // Data rows
             int rowNum = 1;
             for (Submission s : submissions) {
                 org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
@@ -107,41 +120,76 @@ public class ExportService {
 
     // ── PDF export ────────────────────────────────────────────────────────────
 
+    @Transactional(readOnly = true)
     public byte[] exportPdf(Long surveyorId, SubmissionStatus status,
                             String division, String serviceNumber,
                             LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, division, serviceNumber, from, to);
+                .findAllFilteredForExport(surveyorId, status, serviceNumber, from, to);
+
+        // Case-insensitive division filter applied in Java (avoids LOWER(bytea) PostgreSQL type error)
+        if (division != null && !division.isBlank()) {
+            final String divLower = division.toLowerCase();
+            submissions = submissions.stream()
+                    .filter(s -> s.getDivision() != null && s.getDivision().toLowerCase().contains(divLower))
+                    .collect(java.util.stream.Collectors.toList());
+        }
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Document document = new Document(PageSize.A4.rotate());
+            // A3 landscape gives ~1122 x 794 pt — much more room for 18 columns
+            Document document = new Document(PageSize.A3.rotate(), 24, 24, 24, 24);
             PdfWriter.getInstance(document, out);
             document.open();
 
-            Font titleFont = new Font(Font.HELVETICA, 14, Font.BOLD,
-                    Color.decode("#1976D2"));
-            Font headerFont = new Font(Font.HELVETICA, 7, Font.BOLD, Color.WHITE);
-            Font cellFont = new Font(Font.HELVETICA, 7, Font.NORMAL, Color.BLACK);
+            Font titleFont  = new Font(Font.HELVETICA, 13, Font.BOLD,  Color.decode("#1976D2"));
+            Font headerFont = new Font(Font.HELVETICA,  6, Font.BOLD,  Color.WHITE);
+            Font cellFont   = new Font(Font.HELVETICA,  6, Font.NORMAL, Color.BLACK);
 
-            Paragraph title = new Paragraph(
-                    "SolarFreelance — Submissions Report", titleFont);
+            Paragraph title = new Paragraph("Helios Green Light Solar Report", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
-            title.setSpacingAfter(12);
+            title.setSpacingAfter(10);
             document.add(title);
 
             PdfPTable table = new PdfPTable(HEADERS.length);
             table.setWidthPercentage(100);
+            // Proportional column widths — wider for address/email, narrower for panels/ID
+            table.setWidths(new float[]{
+                    2f,   // ID
+                    6f,   // Service Number
+                    6f,   // Customer Name
+                    5f,   // Phone
+                    9f,   // Address
+                    5f,   // Division
+                    5f,   // Sub Division
+                    4f,   // Section
+                    5f,   // Distribution
+                    6f,   // Inverter Serial No.
+                    4f,   // Panel 1
+                    4f,   // Panel 2
+                    4f,   // Panel 3
+                    4f,   // Panel 4
+                    5f,   // Surveyor Name
+                    7f,   // Surveyor Email
+                    5f,   // Status
+                    6f    // Created At
+            });
 
             for (String header : HEADERS) {
                 PdfPCell cell = new PdfPCell(new Phrase(header, headerFont));
                 cell.setBackgroundColor(Color.decode("#1976D2"));
-                cell.setPadding(4);
+                cell.setPadding(3);
+                cell.setMinimumHeight(16f);
                 table.addCell(cell);
             }
 
             for (Submission s : submissions) {
                 List<String> panels = getPanelNumbers(s.getId());
+                // Format createdAt as a readable date without the nanosecond noise
+                String createdAt = s.getCreatedAt() != null
+                        ? s.getCreatedAt().toLocalDate().toString()
+                        + " " + s.getCreatedAt().toLocalTime().withNano(0).toString()
+                        : "";
                 String[] values = {
                         String.valueOf(s.getId()),
                         nullSafe(s.getServiceNumber()),
@@ -160,11 +208,12 @@ public class ExportService {
                         nullSafe(s.getSurveyorName()),
                         s.getSurveyor() != null ? s.getSurveyor().getEmail() : "",
                         s.getStatus().name(),
-                        s.getCreatedAt() != null ? s.getCreatedAt().toString() : ""
+                        createdAt
                 };
                 for (String val : values) {
                     PdfPCell cell = new PdfPCell(new Phrase(val, cellFont));
                     cell.setPadding(3);
+                    cell.setMinimumHeight(14f);
                     table.addCell(cell);
                 }
             }

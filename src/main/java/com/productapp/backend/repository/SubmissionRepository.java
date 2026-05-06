@@ -12,12 +12,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-public interface SubmissionRepository extends JpaRepository<Submission, Long> {
+public interface SubmissionRepository
+        extends JpaRepository<Submission, Long>, SubmissionRepositoryCustom {
 
     boolean existsByServiceNumber(String serviceNumber);
 
     Optional<Submission> findByServiceNumber(String serviceNumber);
 
+    // Used by stats service
     long countByStatus(SubmissionStatus status);
 
     // Surveyor — own submissions with optional filters
@@ -50,12 +52,13 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             Pageable pageable
     );
 
-    // Admin — all submissions with optional filters
+    // Admin — paginated list (used in dashboard, not export)
+    // findAllFilteredForExport is implemented in SubmissionRepositoryCustomImpl
+    // using CriteriaBuilder to avoid PostgreSQL untyped-null parameter errors.
     @Query("""
             SELECT s FROM Submission s
             WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
             AND (:status IS NULL OR s.status = :status)
-            AND (:division IS NULL OR LOWER(s.division) LIKE LOWER(CONCAT('%', :division, '%')))
             AND (:serviceNumber IS NULL OR s.serviceNumber = :serviceNumber)
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
@@ -63,35 +66,13 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     Page<Submission> findAllFiltered(
             @Param("surveyorId") Long surveyorId,
             @Param("status") SubmissionStatus status,
-            @Param("division") String division,
             @Param("serviceNumber") String serviceNumber,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to,
             Pageable pageable
     );
 
-    // Export — no pagination, eager fetch
-    @Query("""
-            SELECT s FROM Submission s
-            LEFT JOIN FETCH s.images
-            LEFT JOIN FETCH s.panelNumbers
-            WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
-            AND (:status IS NULL OR s.status = :status)
-            AND (:division IS NULL OR LOWER(s.division) LIKE LOWER(CONCAT('%', :division, '%')))
-            AND (:serviceNumber IS NULL OR s.serviceNumber = :serviceNumber)
-            AND (:from IS NULL OR s.createdAt >= :from)
-            AND (:to IS NULL OR s.createdAt <= :to)
-            """)
-    List<Submission> findAllFilteredForExport(
-            @Param("surveyorId") Long surveyorId,
-            @Param("status") SubmissionStatus status,
-            @Param("division") String division,
-            @Param("serviceNumber") String serviceNumber,
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to
-    );
-
-    // Stats — submissions per day for the last 7 days
+    // Returns Object[] { LocalDate, Long count }
     @Query("""
             SELECT CAST(s.createdAt AS LocalDate), COUNT(s)
             FROM Submission s
@@ -101,7 +82,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             """)
     List<Object[]> countByDaySince(@Param("since") LocalDateTime since);
 
-    // Stats — submission count per surveyor
+    // Returns Object[] { surveyorId (Long), count (Long) }
     @Query("""
             SELECT s.surveyor.id, COUNT(s)
             FROM Submission s

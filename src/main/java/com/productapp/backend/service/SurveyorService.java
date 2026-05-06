@@ -48,6 +48,14 @@ public class SurveyorService {
 
     public ApiResponse login(SurveyorLoginRequest request) {
 
+        // Access check first — if admin removed this email from the whitelist,
+        // the surveyor account is suspended. All their data is preserved; they
+        // simply cannot authenticate until the email is re-added by an admin.
+        if (!allowedEmailRepository.existsByEmail(request.getEmail())) {
+            log.warn("Surveyor login blocked — email removed from whitelist: {}", request.getEmail());
+            throw new EmailNotAllowedException(request.getEmail());
+        }
+
         Surveyor surveyor = surveyorRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
                     log.warn("Surveyor login failed — not found: {}", request.getEmail());
@@ -68,7 +76,7 @@ public class SurveyorService {
         return surveyorRepository.findByEmail(email)
                 .orElseThrow(() -> new SurveyorNotFoundException(email));
     }
-    
+
     public ApiResponse sendForgotPasswordOtp(String email) {
         surveyorRepository.findByEmail(email)
                 .orElseThrow(() -> {
