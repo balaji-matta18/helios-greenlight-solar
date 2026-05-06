@@ -1,52 +1,54 @@
 package com.productapp.backend.service;
 
+import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.services.ses.SesClient;
-import software.amazon.awssdk.services.ses.model.*;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
 
-    private final SesClient sesClient;
+    private final JavaMailSender mailSender;
 
-    @Value("${aws.ses.sender-email}")
+    @Value("${app.email.sender}")
     private String senderEmail;
 
     public void sendOtpEmail(String toEmail, String otpValue, int expiryMinutes) {
-        String subject = "Your SolarFreelance OTP Code";
+        String subject = "Your Helios OTP Code";
         String htmlBody = """
                 <html>
-                  <body style="font-family: Arial, sans-serif; padding: 24px;">
-                    <h2 style="color: #1976D2;">SolarFreelance</h2>
-                    <p>Your one-time password (OTP) is:</p>
-                    <h1 style="letter-spacing: 8px; color: #333;">%s</h1>
-                    <p>This code is valid for <b>%d minutes</b>. Do not share it with anyone.</p>
-                    <p style="color: #999; font-size: 12px;">If you did not request this, please ignore this email.</p>
+                  <body style="font-family: Arial, sans-serif; padding: 24px; max-width: 480px; margin: auto;">
+                    <h2 style="color: #4e9d8a;">Helios Green Light Solar</h2>
+                    <p style="color: #333;">Your one-time password (OTP) is:</p>
+                    <div style="font-size: 36px; font-weight: 700; letter-spacing: 10px;
+                                color: #1a1a1a; margin: 20px 0;">%s</div>
+                    <p style="color: #555;">
+                      This code is valid for <strong>%d minutes</strong>.
+                      Do not share it with anyone.
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+                    <p style="color: #aaa; font-size: 12px;">
+                      If you did not request this, please ignore this email.
+                    </p>
                   </body>
                 </html>
                 """.formatted(otpValue, expiryMinutes);
 
         try {
-            SendEmailRequest request = SendEmailRequest.builder()
-                    .source(senderEmail)
-                    .destination(Destination.builder().toAddresses(toEmail).build())
-                    .message(Message.builder()
-                            .subject(Content.builder().data(subject).charset("UTF-8").build())
-                            .body(Body.builder()
-                                    .html(Content.builder().data(htmlBody).charset("UTF-8").build())
-                                    .build())
-                            .build())
-                    .build();
-
-            sesClient.sendEmail(request);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(senderEmail);
+            helper.setTo(toEmail);
+            helper.setSubject(subject);
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
             log.info("OTP email sent to: {}", toEmail);
-
-        } catch (SesException e) {
+        } catch (Exception e) {
             log.error("Failed to send OTP email to {}: {}", toEmail, e.getMessage());
             throw new RuntimeException("Failed to send OTP email. Please try again.");
         }

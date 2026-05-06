@@ -1,6 +1,7 @@
 package com.productapp.backend.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -37,6 +38,7 @@ public class AwsConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(name = "aws.accessKeyId")
     public SesClient sesClient() {
         return SesClient.builder()
                 .region(Region.of(region))

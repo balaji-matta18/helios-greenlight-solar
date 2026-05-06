@@ -138,8 +138,6 @@ public class OtpService {
 
         String otpValue = String.valueOf(100000 + SECURE_RANDOM.nextInt(900000));
 
-        // Remove this line while we got SES production access
-        log.info("DEV OTP for {} : {}", email, otpValue);
 
         Otp otp = Otp.builder()
                 .email(email)
@@ -148,11 +146,8 @@ public class OtpService {
                 .build();
 
         otpRepository.save(otp);
-        try {
-            emailService.sendOtpEmail(email, otpValue, OTP_EXPIRY_MINUTES);
-        } catch (Exception e) {
-            log.warn("SES not available (dev mode) – OTP logged above. Error: {}", e.getMessage());
-        }
+
+        emailService.sendOtpEmail(email, otpValue, OTP_EXPIRY_MINUTES);
 
         log.info("OTP sent to email: {} type: {}", email, otpType);
     }
