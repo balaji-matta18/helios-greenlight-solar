@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,6 +19,11 @@ public class EmailService {
     @Value("${app.email.sender}")
     private String senderEmail;
 
+    // FIX: @Async — email sending no longer blocks the HTTP request thread.
+    // Previously the login API would hang for the full SMTP round-trip (~1-2s).
+    // The OTP is saved to DB before this method is called, so the response
+    // returns immediately while the email is sent in the background.
+    @Async
     public void sendOtpEmail(String toEmail, String otpValue, int expiryMinutes) {
         String subject = "Your Helios OTP Code";
         String htmlBody = """
@@ -49,8 +55,9 @@ public class EmailService {
             mailSender.send(message);
             log.info("OTP email sent to: {}", toEmail);
         } catch (Exception e) {
+            // Log but don't rethrow — the HTTP response has already been sent.
+            // The user will see "OTP sent" and if email fails they can request a new one.
             log.error("Failed to send OTP email to {}: {}", toEmail, e.getMessage());
-            throw new RuntimeException("Failed to send OTP email. Please try again.");
         }
     }
 }

@@ -19,7 +19,6 @@ public interface SubmissionRepository
 
     Optional<Submission> findByServiceNumber(String serviceNumber);
 
-    // Used by stats service
     long countByStatus(SubmissionStatus status);
 
     // Surveyor — own submissions with optional filters
@@ -52,14 +51,14 @@ public interface SubmissionRepository
             Pageable pageable
     );
 
-    // Admin — paginated list (used in dashboard, not export)
-    // findAllFilteredForExport is implemented in SubmissionRepositoryCustomImpl
-    // using CriteriaBuilder to avoid PostgreSQL untyped-null parameter errors.
+    // FIX: added division filter to DB query — previously division was filtered in Java
+    // after loading all records, which was inefficient.
     @Query("""
             SELECT s FROM Submission s
             WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
             AND (:status IS NULL OR s.status = :status)
             AND (:serviceNumber IS NULL OR s.serviceNumber = :serviceNumber)
+            AND (:division IS NULL OR LOWER(s.division) LIKE LOWER(CONCAT('%', :division, '%')))
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
             """)
@@ -67,12 +66,12 @@ public interface SubmissionRepository
             @Param("surveyorId") Long surveyorId,
             @Param("status") SubmissionStatus status,
             @Param("serviceNumber") String serviceNumber,
+            @Param("division") String division,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to,
             Pageable pageable
     );
 
-    // Returns Object[] { LocalDate, Long count }
     @Query("""
             SELECT CAST(s.createdAt AS LocalDate), COUNT(s)
             FROM Submission s
@@ -82,7 +81,6 @@ public interface SubmissionRepository
             """)
     List<Object[]> countByDaySince(@Param("since") LocalDateTime since);
 
-    // Returns Object[] { surveyorId (Long), count (Long) }
     @Query("""
             SELECT s.surveyor.id, COUNT(s)
             FROM Submission s

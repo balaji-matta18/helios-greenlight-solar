@@ -48,22 +48,17 @@ public class SurveyorService {
 
     public ApiResponse login(SurveyorLoginRequest request) {
 
-        // Access check first — if admin removed this email from the whitelist,
-        // the surveyor account is suspended. All their data is preserved; they
-        // simply cannot authenticate until the email is re-added by an admin.
         if (!allowedEmailRepository.existsByEmail(request.getEmail())) {
             log.warn("Surveyor login blocked — email removed from whitelist: {}", request.getEmail());
             throw new EmailNotAllowedException(request.getEmail());
         }
 
-        Surveyor surveyor = surveyorRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> {
-                    log.warn("Surveyor login failed — not found: {}", request.getEmail());
-                    return new SurveyorNotFoundException(request.getEmail());
-                });
+        // FIX (SECURITY): unified error — don't reveal whether the email is registered.
+        // Previously SurveyorNotFoundException exposed email enumeration.
+        Surveyor surveyor = surveyorRepository.findByEmail(request.getEmail()).orElse(null);
 
-        if (!passwordEncoder.matches(request.getPassword(), surveyor.getPassword())) {
-            log.warn("Surveyor login failed — wrong password: {}", request.getEmail());
+        if (surveyor == null || !passwordEncoder.matches(request.getPassword(), surveyor.getPassword())) {
+            log.warn("Surveyor login failed for: {}", request.getEmail());
             throw new InvalidCredentialsException();
         }
 
@@ -78,15 +73,18 @@ public class SurveyorService {
     }
 
     public ApiResponse sendForgotPasswordOtp(String email) {
-        surveyorRepository.findByEmail(email)
-                .orElseThrow(() -> {
-                    log.warn("Forgot-password attempt for unknown email: {}", email);
-                    return new SurveyorNotFoundException(email);
-                });
-
-        otpService.sendOtp(email, OtpType.PASSWORD_RESET);
-        log.info("Password-reset OTP sent for: {}", email);
-        return new ApiResponse("OTP sent to your registered email.");
+        // FIX (SECURITY): always return success regardless of whether the email exists.
+        // Previously this threw SurveyorNotFoundException, letting attackers enumerate
+        // registered surveyor emails via the forgot-password endpoint.
+        boolean exists = surveyorRepository.existsByEmail(email);
+        if (exists) {
+            otpService.sendOtp(email, OtpType.PASSWORD_RESET);
+            log.info("Password-reset OTP sent for: {}", email);
+        } else {
+            log.warn("Forgot-password attempt for unregistered email (silent): {}", email);
+        }
+        // Same response either way — attacker can't tell the difference
+        return new ApiResponse("If this email is registered, an OTP has been sent.");
     }
 
     public ApiResponse resetPassword(String email, String otpValue, String newPassword) {

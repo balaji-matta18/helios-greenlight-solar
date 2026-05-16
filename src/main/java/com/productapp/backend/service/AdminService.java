@@ -1,3 +1,10 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// AdminService.java
+// FIX (SECURITY): admin login no longer reveals whether an email exists.
+// Previously AdminNotFoundException was thrown for unknown emails, which let
+// an attacker enumerate valid admin emails by watching the error responses.
+// Now both "not found" and "wrong password" return the same generic error.
+// ─────────────────────────────────────────────────────────────────────────────
 package com.productapp.backend.service;
 
 import com.productapp.backend.dto.AdminLoginRequest;
@@ -5,7 +12,6 @@ import com.productapp.backend.dto.ApiResponse;
 import com.productapp.backend.dto.AuthResponse;
 import com.productapp.backend.entity.Admin;
 import com.productapp.backend.entity.OtpType;
-import com.productapp.backend.exception.AdminNotFoundException;
 import com.productapp.backend.exception.InvalidCredentialsException;
 import com.productapp.backend.repository.AdminRepository;
 import com.productapp.backend.security.JwtService;
@@ -24,17 +30,14 @@ public class AdminService {
     private final JwtService jwtService;
     private final OtpService otpService;
 
-    // Step 1 — verify email + password, send 2FA OTP
     public ApiResponse login(AdminLoginRequest request) {
 
         Admin admin = adminRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> {
-                    log.warn("Login failed — admin not found: {}", request.getEmail());
-                    return new AdminNotFoundException(request.getEmail());
-                });
+                .orElse(null);
 
-        if (!passwordEncoder.matches(request.getPassword(), admin.getPassword())) {
-            log.warn("Login failed — wrong password for: {}", request.getEmail());
+        // FIX: unified error response — don't reveal whether the email exists
+        if (admin == null || !passwordEncoder.matches(request.getPassword(), admin.getPassword())) {
+            log.warn("Admin login failed for: {}", request.getEmail());
             throw new InvalidCredentialsException();
         }
 
@@ -43,7 +46,6 @@ public class AdminService {
         return new ApiResponse("Password verified. OTP sent to your registered email.");
     }
 
-    // Step 2 — verify OTP, return JWT
     public AuthResponse verify2fa(String email, String otpValue) {
         otpService.verifyOtpOnly(email, otpValue, OtpType.ADMIN_2FA);
         String token = jwtService.generateToken(email, "ROLE_ADMIN");

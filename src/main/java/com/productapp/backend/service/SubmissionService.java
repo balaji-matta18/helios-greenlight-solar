@@ -11,7 +11,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.data.domain.PageImpl;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -104,7 +103,6 @@ public class SubmissionService {
 
         Submission saved = submissionRepository.save(submission);
 
-
         auditLogRepository.save(SubmissionAuditLog.builder()
                 .submission(saved)
                 .editedByEmail(editorEmail)
@@ -137,37 +135,22 @@ public class SubmissionService {
     }
 
 
-
+    // FIX: replaced findAll() + in-memory filter with proper DB-level paginated query
+    @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> adminGetAll(
             Long surveyorId, SubmissionStatus status, String division,
             String serviceNumber, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
-        List<SubmissionSummaryResponse> filtered = submissionRepository.findAll().stream()
-                .filter(s -> surveyorId == null ||
-                        (s.getSurveyor() != null && s.getSurveyor().getId().equals(surveyorId)))
-                .filter(s -> status == null || s.getStatus() == status)
-                .filter(s -> division == null ||
-                        (s.getDivision() != null && s.getDivision().toLowerCase().contains(division.toLowerCase())))
-                .filter(s -> serviceNumber == null || serviceNumber.equals(s.getServiceNumber()))
-                .filter(s -> from == null || !s.getCreatedAt().isBefore(from))
-                .filter(s -> to == null || !s.getCreatedAt().isAfter(to))
-                .map(this::mapToSummary)
-                .collect(Collectors.toList());
+        Page<Submission> page = submissionRepository.findAllFiltered(
+                surveyorId, status, serviceNumber, division, from, to, pageable);
 
-        int start = (int) pageable.getOffset();
-        int end   = Math.min(start + pageable.getPageSize(), filtered.size());
-        List<SubmissionSummaryResponse> pageContent =
-                start >= filtered.size() ? List.of() : filtered.subList(start, end);
-
-        Page<SubmissionSummaryResponse> page =
-                new PageImpl<>(pageContent, pageable, filtered.size());
-
-        return buildPageResponse(page);
+        return buildPageResponse(page.map(this::mapToSummary));
     }
 
 
+    @Transactional(readOnly = true)
     public List<AuditLogResponse> getAuditLog(Long submissionId) {
-        getSubmissionById(submissionId); // verify exists
+        getSubmissionById(submissionId);
         return auditLogRepository
                 .findBySubmissionIdOrderByEditedAtDesc(submissionId)
                 .stream()
@@ -181,7 +164,7 @@ public class SubmissionService {
     }
 
 
-
+    @Transactional(readOnly = true)
     public SubmissionResponse lookupByServiceNumber(String serviceNumber) {
 
         String currentEmail = SecurityContextHolder.getContext()
@@ -193,7 +176,6 @@ public class SubmissionService {
                 .findByServiceNumber(serviceNumber)
                 .orElseThrow(() -> new SubmissionNotFoundException(serviceNumber));
 
-        // Owned by a different surveyor — hide it completely
         if (submission.getSurveyor() != null &&
                 !submission.getSurveyor().getId().equals(currentSurveyor.getId())) {
             throw new SubmissionNotFoundException(serviceNumber);
@@ -201,7 +183,6 @@ public class SubmissionService {
 
         return mapToResponse(submission);
     }
-
 
 
     @Transactional
@@ -226,8 +207,8 @@ public class SubmissionService {
             throw new SubmissionNotFoundException(request.getServiceNumber());
         }
 
-        submission.setSurveyorName(request.getSurveyorName()); // display only
-        submission.setSurveyor(surveyor);                       // ownership via FK
+        submission.setSurveyorName(request.getSurveyorName());
+        submission.setSurveyor(surveyor);
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
         submission.setStatus(SubmissionStatus.SUBMITTED);
 
@@ -261,7 +242,6 @@ public class SubmissionService {
     }
 
 
-
     @Transactional
     public void surveyorDelete(Long id) {
         Submission submission = getSubmissionById(id);
@@ -272,7 +252,8 @@ public class SubmissionService {
     }
 
 
-
+    // FIX: replaced findAll() + in-memory filter with proper DB-level paginated query
+    @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> surveyorGetOwn(
             SubmissionStatus status, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
@@ -280,24 +261,15 @@ public class SubmissionService {
         Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
                 .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
 
-        List<SubmissionSummaryResponse> filtered = submissionRepository.findAll().stream()
-                .filter(s -> s.getSurveyor() != null &&
-                        s.getSurveyor().getId().equals(surveyor.getId()))
-                .filter(s -> status == null || s.getStatus() == status)
-                .filter(s -> from == null || !s.getCreatedAt().isBefore(from))
-                .filter(s -> to == null || !s.getCreatedAt().isAfter(to))
-                .map(this::mapToSummary)
-                .collect(Collectors.toList());
+        Page<Submission> page = submissionRepository.findBySurveyorFiltered(
+                surveyor.getId(), status, from, to, pageable);
 
-        int start = (int) pageable.getOffset();
-        int end   = Math.min(start + pageable.getPageSize(), filtered.size());
-        List<SubmissionSummaryResponse> pageContent =
-                start >= filtered.size() ? List.of() : filtered.subList(start, end);
-
-        return buildPageResponse(new PageImpl<>(pageContent, pageable, filtered.size()));
+        return buildPageResponse(page.map(this::mapToSummary));
     }
 
 
+    // FIX: replaced findAll() + in-memory filter with proper DB-level paginated query
+    @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> surveyorGetToday(Pageable pageable) {
 
         String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -307,24 +279,33 @@ public class SubmissionService {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end   = LocalDate.now().atTime(LocalTime.MAX);
 
-        List<SubmissionSummaryResponse> filtered = submissionRepository.findAll().stream()
-                .filter(s -> s.getSurveyor() != null &&
-                        s.getSurveyor().getId().equals(surveyor.getId()))
-                .filter(s -> !s.getCreatedAt().isBefore(start) && !s.getCreatedAt().isAfter(end))
-                .map(this::mapToSummary)
-                .collect(Collectors.toList());
+        Page<Submission> page = submissionRepository.findTodayBySurveyor(
+                surveyor.getId(), start, end, pageable);
 
-        int p     = (int) pageable.getOffset();
-        int pEnd  = Math.min(p + pageable.getPageSize(), filtered.size());
-        List<SubmissionSummaryResponse> pageContent =
-                p >= filtered.size() ? List.of() : filtered.subList(p, pEnd);
-
-        return buildPageResponse(new PageImpl<>(pageContent, pageable, filtered.size()));
+        return buildPageResponse(page.map(this::mapToSummary));
     }
 
 
+    // FIX (SECURITY): added surveyor ownership check — previously any authenticated
+    // surveyor could fetch any submission by ID just by knowing it.
+    @Transactional(readOnly = true)
     public SubmissionResponse getById(Long id) {
-        return mapToResponse(getSubmissionById(id));
+        Submission submission = getSubmissionById(id);
+
+        // If called from a SURVEYOR context, enforce ownership
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isSurveyor = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_SURVEYOR"));
+
+        if (isSurveyor) {
+            String currentEmail = auth.getName();
+            if (submission.getSurveyor() == null ||
+                    !submission.getSurveyor().getEmail().equals(currentEmail)) {
+                throw new AccessDeniedException("This submission does not belong to you");
+            }
+        }
+
+        return mapToResponse(submission);
     }
 
 
@@ -342,16 +323,27 @@ public class SubmissionService {
         }
     }
 
+    // FIX: removed countBySubmissionId() DB call inside loop — use a simple counter instead,
+    // and batch all saves with saveAll() instead of individual save() calls.
     private void savePanelNumbers(Submission s, String p1, String p2, String p3, String p4) {
-        List.of(p1 != null ? p1 : "", p2 != null ? p2 : "",
-                        p3 != null ? p3 : "", p4 != null ? p4 : "")
+        List<String> panels = List.of(
+                        p1 != null ? p1 : "",
+                        p2 != null ? p2 : "",
+                        p3 != null ? p3 : "",
+                        p4 != null ? p4 : "")
                 .stream()
                 .filter(p -> !p.isBlank())
-                .forEach(p -> {
-                    int seq = (int) panelNumberRepository.countBySubmissionId(s.getId()) + 1;
-                    panelNumberRepository.save(PanelNumber.builder()
-                            .panelNumber(p).sequence(seq).submission(s).build());
-                });
+                .collect(Collectors.toList());
+
+        List<PanelNumber> toSave = new ArrayList<>();
+        for (int i = 0; i < panels.size(); i++) {
+            toSave.add(PanelNumber.builder()
+                    .panelNumber(panels.get(i))
+                    .sequence(i + 1)
+                    .submission(s)
+                    .build());
+        }
+        panelNumberRepository.saveAll(toSave);
     }
 
     private void updatePanelNumbers(Submission s, String p1, String p2, String p3, String p4) {

@@ -3,6 +3,7 @@ package com.productapp.backend.repository;
 import com.productapp.backend.entity.Otp;
 import com.productapp.backend.entity.OtpType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -24,4 +25,9 @@ public interface OtpRepository extends JpaRepository<Otp, Long> {
             @Param("otpType") OtpType otpType,
             @Param("since") LocalDateTime since
     );
+
+    // FIX: used by scheduled cleanup to prevent the otp table growing forever
+    @Modifying
+    @Query("DELETE FROM Otp o WHERE o.expiryTime < :cutoff")
+    void deleteExpiredOtps(@Param("cutoff") LocalDateTime cutoff);
 }

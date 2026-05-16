@@ -2,6 +2,7 @@ package com.productapp.backend.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -20,9 +21,14 @@ public class JwtService {
     @Value("${jwt.expiration-ms:3600000}")
     private long expirationMs;
 
-    private SecretKey getKey() {
+    // FIX: cache the key — previously getKey() decoded Base64 and created a new
+    // SecretKey object on EVERY token validation (i.e. every authenticated request).
+    private SecretKey cachedKey;
+
+    @PostConstruct
+    private void initKey() {
         byte[] keyBytes = Base64.getDecoder().decode(secret);
-        return Keys.hmacShaKeyFor(keyBytes);
+        this.cachedKey = Keys.hmacShaKeyFor(keyBytes);
     }
 
     public String generateToken(String subject, String role) {
@@ -31,7 +37,7 @@ public class JwtService {
                 .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
-                .signWith(getKey())
+                .signWith(cachedKey)
                 .compact();
     }
 
@@ -42,7 +48,7 @@ public class JwtService {
                 .claim("name", name)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
-                .signWith(getKey())
+                .signWith(cachedKey)
                 .compact();
     }
 
@@ -66,7 +72,7 @@ public class JwtService {
 
     private Claims parseClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getKey())
+                .verifyWith(cachedKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
