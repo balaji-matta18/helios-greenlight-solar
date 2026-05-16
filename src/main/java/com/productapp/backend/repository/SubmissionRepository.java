@@ -51,27 +51,9 @@ public interface SubmissionRepository
             Pageable pageable
     );
 
-    // Admin — paginated list with filters
-    // CAST(s.division AS string) forces Hibernate to emit ::text in PostgreSQL SQL,
-    // which avoids the "function lower(bytea) does not exist" error on Neon.
-    @Query("""
-            SELECT s FROM Submission s
-            WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
-            AND (:status IS NULL OR s.status = :status)
-            AND (:serviceNumber IS NULL OR s.serviceNumber = :serviceNumber)
-            AND (:division IS NULL OR LOWER(CAST(s.division AS string)) LIKE LOWER(CONCAT('%', :division, '%')))
-            AND (:from IS NULL OR s.createdAt >= :from)
-            AND (:to IS NULL OR s.createdAt <= :to)
-            """)
-    Page<Submission> findAllFiltered(
-            @Param("surveyorId") Long surveyorId,
-            @Param("status") SubmissionStatus status,
-            @Param("serviceNumber") String serviceNumber,
-            @Param("division") String division,
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to,
-            Pageable pageable
-    );
+    // Admin paginated list — handled by SubmissionRepositoryCustomImpl
+    // using CriteriaBuilder to avoid lower(bytea) Neon PostgreSQL error.
+    // findAllFilteredPaged() is defined in SubmissionRepositoryCustom.
 
     @Query("""
             SELECT CAST(s.createdAt AS LocalDate), COUNT(s)

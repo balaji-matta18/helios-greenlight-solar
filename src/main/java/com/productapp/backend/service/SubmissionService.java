@@ -135,13 +135,14 @@ public class SubmissionService {
     }
 
 
-    // FIX: replaced findAll() + in-memory filter with proper DB-level paginated query
+    // FIX: uses CriteriaBuilder-based findAllFilteredPaged to avoid lower(bytea)
+    // Neon PostgreSQL error that occurs with JPQL LOWER() regardless of casting.
     @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> adminGetAll(
             Long surveyorId, SubmissionStatus status, String division,
             String serviceNumber, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
-        Page<Submission> page = submissionRepository.findAllFiltered(
+        Page<Submission> page = submissionRepository.findAllFilteredPaged(
                 surveyorId, status, serviceNumber, division, from, to, pageable);
 
         return buildPageResponse(page.map(this::mapToSummary));
