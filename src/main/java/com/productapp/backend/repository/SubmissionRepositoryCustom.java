@@ -10,7 +10,7 @@ import java.util.List;
 
 public interface SubmissionRepositoryCustom {
 
-    // Used by admin dashboard — paginated with all filters including division
+    // Admin — paginated with all filters
     Page<Submission> findAllFilteredPaged(
             Long surveyorId,
             SubmissionStatus status,
@@ -21,7 +21,24 @@ public interface SubmissionRepositoryCustom {
             Pageable pageable
     );
 
-    // Used by export (Excel/PDF) — no pagination needed
+    // Surveyor — own submissions with optional filters
+    Page<Submission> findBySurveyorFiltered(
+            Long surveyorId,
+            SubmissionStatus status,
+            LocalDateTime from,
+            LocalDateTime to,
+            Pageable pageable
+    );
+
+    // Surveyor — today's submissions
+    Page<Submission> findTodayBySurveyor(
+            Long surveyorId,
+            LocalDateTime startOfDay,
+            LocalDateTime endOfDay,
+            Pageable pageable
+    );
+
+    // Export (Excel/PDF) — no pagination
     List<Submission> findAllFilteredForExport(
             Long surveyorId,
             SubmissionStatus status,

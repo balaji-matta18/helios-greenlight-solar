@@ -15,37 +15,35 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * All dynamic queries use CriteriaBuilder instead of JPQL.
+ *
+ * Reason: Neon PostgreSQL cannot determine the data type of null parameters
+ * in JPQL patterns like "(:param IS NULL OR col = :param)". This causes
+ * "could not determine data type of parameter $N" errors at runtime.
+ * CriteriaBuilder operates on Java types from the entity mapping and only
+ * adds predicates when values are non-null, so it never sends untyped nulls.
+ */
 @Repository
 public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCustom {
 
     @PersistenceContext
     private EntityManager em;
 
-    // FIX: uses CriteriaBuilder instead of JPQL for the admin paginated list.
-    // JPQL with LOWER() on the division field fails on Neon with "function lower(bytea)
-    // does not exist" regardless of CAST. CriteriaBuilder operates on the Java type
-    // (String) from the entity mapping, so cb.lower() generates correct SQL every time.
+    // ── Admin paginated list ─────────────────────────────────────────────────
+
     @Override
     public Page<Submission> findAllFilteredPaged(
-            Long surveyorId,
-            SubmissionStatus status,
-            String serviceNumber,
-            String division,
-            LocalDateTime from,
-            LocalDateTime to,
-            Pageable pageable) {
+            Long surveyorId, SubmissionStatus status, String serviceNumber,
+            String division, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
 
-        // ── Data query ──────────────────────────────────────────────────────
+        // Data query
         CriteriaQuery<Submission> dataQuery = cb.createQuery(Submission.class);
         Root<Submission> s = dataQuery.from(Submission.class);
         dataQuery.distinct(true);
-
-        List<Predicate> predicates = buildPredicates(cb, s, surveyorId, status,
-                serviceNumber, division, from, to);
-
-        dataQuery.where(predicates.toArray(new Predicate[0]));
+        dataQuery.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, division, from, to));
         dataQuery.orderBy(cb.desc(s.get("createdAt")));
 
         List<Submission> results = em.createQuery(dataQuery)
@@ -53,53 +51,104 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
                 .setMaxResults(pageable.getPageSize())
                 .getResultList();
 
-        // ── Count query (required for Page metadata) ─────────────────────
+        // Count query
         CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
         Root<Submission> cs = countQuery.from(Submission.class);
-
-        List<Predicate> countPredicates = buildPredicates(cb, cs, surveyorId, status,
-                serviceNumber, division, from, to);
-
         countQuery.select(cb.countDistinct(cs));
-        countQuery.where(countPredicates.toArray(new Predicate[0]));
-
+        countQuery.where(buildAdminPredicates(cb, cs, surveyorId, status, serviceNumber, division, from, to));
         Long total = em.createQuery(countQuery).getSingleResult();
 
         return new PageImpl<>(results, pageable, total);
     }
 
+    // ── Surveyor — own submissions ───────────────────────────────────────────
+
+    @Override
+    public Page<Submission> findBySurveyorFiltered(
+            Long surveyorId, SubmissionStatus status,
+            LocalDateTime from, LocalDateTime to, Pageable pageable) {
+
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+
+        CriteriaQuery<Submission> dataQuery = cb.createQuery(Submission.class);
+        Root<Submission> s = dataQuery.from(Submission.class);
+        dataQuery.where(buildSurveyorPredicates(cb, s, surveyorId, status, from, to));
+        dataQuery.orderBy(cb.desc(s.get("createdAt")));
+
+        List<Submission> results = em.createQuery(dataQuery)
+                .setFirstResult((int) pageable.getOffset())
+                .setMaxResults(pageable.getPageSize())
+                .getResultList();
+
+        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
+        Root<Submission> cs = countQuery.from(Submission.class);
+        countQuery.select(cb.count(cs));
+        countQuery.where(buildSurveyorPredicates(cb, cs, surveyorId, status, from, to));
+        Long total = em.createQuery(countQuery).getSingleResult();
+
+        return new PageImpl<>(results, pageable, total);
+    }
+
+    // ── Surveyor — today's submissions ──────────────────────────────────────
+
+    @Override
+    public Page<Submission> findTodayBySurveyor(
+            Long surveyorId, LocalDateTime startOfDay, LocalDateTime endOfDay, Pageable pageable) {
+
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+
+        CriteriaQuery<Submission> dataQuery = cb.createQuery(Submission.class);
+        Root<Submission> s = dataQuery.from(Submission.class);
+
+        Predicate[] predicates = {
+                cb.equal(s.get("surveyor").get("id"), surveyorId),
+                cb.greaterThanOrEqualTo(s.get("createdAt"), startOfDay),
+                cb.lessThanOrEqualTo(s.get("createdAt"), endOfDay)
+        };
+        dataQuery.where(predicates);
+        dataQuery.orderBy(cb.desc(s.get("createdAt")));
+
+        List<Submission> results = em.createQuery(dataQuery)
+                .setFirstResult((int) pageable.getOffset())
+                .setMaxResults(pageable.getPageSize())
+                .getResultList();
+
+        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
+        Root<Submission> cs = countQuery.from(Submission.class);
+        countQuery.select(cb.count(cs));
+        countQuery.where(
+                cb.equal(cs.get("surveyor").get("id"), surveyorId),
+                cb.greaterThanOrEqualTo(cs.get("createdAt"), startOfDay),
+                cb.lessThanOrEqualTo(cs.get("createdAt"), endOfDay)
+        );
+        Long total = em.createQuery(countQuery).getSingleResult();
+
+        return new PageImpl<>(results, pageable, total);
+    }
+
+    // ── Export ───────────────────────────────────────────────────────────────
+
     @Override
     public List<Submission> findAllFilteredForExport(
-            Long surveyorId,
-            SubmissionStatus status,
-            String serviceNumber,
-            LocalDateTime from,
-            LocalDateTime to) {
+            Long surveyorId, SubmissionStatus status, String serviceNumber,
+            LocalDateTime from, LocalDateTime to) {
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Submission> cq = cb.createQuery(Submission.class);
         Root<Submission> s = cq.from(Submission.class);
         cq.distinct(true);
-
-        List<Predicate> predicates = buildPredicates(cb, s, surveyorId, status,
-                serviceNumber, null, from, to);
-
-        cq.where(predicates.toArray(new Predicate[0]));
+        cq.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, null, from, to));
         cq.orderBy(cb.asc(s.get("id")));
 
         return em.createQuery(cq).getResultList();
     }
 
-    // ── Shared predicate builder ─────────────────────────────────────────────
-    private List<Predicate> buildPredicates(
-            CriteriaBuilder cb,
-            Root<Submission> s,
-            Long surveyorId,
-            SubmissionStatus status,
-            String serviceNumber,
-            String division,
-            LocalDateTime from,
-            LocalDateTime to) {
+    // ── Predicate builders ───────────────────────────────────────────────────
+
+    private Predicate[] buildAdminPredicates(
+            CriteriaBuilder cb, Root<Submission> s,
+            Long surveyorId, SubmissionStatus status, String serviceNumber,
+            String division, LocalDateTime from, LocalDateTime to) {
 
         List<Predicate> predicates = new ArrayList<>();
 
@@ -114,8 +163,6 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
             predicates.add(cb.equal(s.get("serviceNumber"), serviceNumber));
         }
         if (division != null && !division.isBlank()) {
-            // cb.lower() on a String entity field generates correct SQL —
-            // no bytea ambiguity unlike JPQL LOWER() on Neon.
             predicates.add(cb.like(
                     cb.lower(s.get("division")),
                     "%" + division.toLowerCase() + "%"
@@ -128,6 +175,28 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
             predicates.add(cb.lessThanOrEqualTo(s.get("createdAt"), to));
         }
 
-        return predicates;
+        return predicates.toArray(new Predicate[0]);
+    }
+
+    private Predicate[] buildSurveyorPredicates(
+            CriteriaBuilder cb, Root<Submission> s,
+            Long surveyorId, SubmissionStatus status,
+            LocalDateTime from, LocalDateTime to) {
+
+        List<Predicate> predicates = new ArrayList<>();
+
+        predicates.add(cb.equal(s.get("surveyor").get("id"), surveyorId));
+
+        if (status != null) {
+            predicates.add(cb.equal(s.get("status"), status));
+        }
+        if (from != null) {
+            predicates.add(cb.greaterThanOrEqualTo(s.get("createdAt"), from));
+        }
+        if (to != null) {
+            predicates.add(cb.lessThanOrEqualTo(s.get("createdAt"), to));
+        }
+
+        return predicates.toArray(new Predicate[0]);
     }
 }
