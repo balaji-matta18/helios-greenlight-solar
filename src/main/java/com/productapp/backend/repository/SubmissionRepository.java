@@ -51,14 +51,15 @@ public interface SubmissionRepository
             Pageable pageable
     );
 
-    // FIX: added division filter to DB query — previously division was filtered in Java
-    // after loading all records, which was inefficient.
+    // Admin — paginated list with filters
+    // CAST(s.division AS string) forces Hibernate to emit ::text in PostgreSQL SQL,
+    // which avoids the "function lower(bytea) does not exist" error on Neon.
     @Query("""
             SELECT s FROM Submission s
             WHERE (:surveyorId IS NULL OR s.surveyor.id = :surveyorId)
             AND (:status IS NULL OR s.status = :status)
             AND (:serviceNumber IS NULL OR s.serviceNumber = :serviceNumber)
-            AND (:division IS NULL OR LOWER(s.division) LIKE LOWER(CONCAT('%', :division, '%')))
+            AND (:division IS NULL OR LOWER(CAST(s.division AS string)) LIKE LOWER(CONCAT('%', :division, '%')))
             AND (:from IS NULL OR s.createdAt >= :from)
             AND (:to IS NULL OR s.createdAt <= :to)
             """)
