@@ -29,11 +29,14 @@ public class SubmissionResponse {
     private List<PanelNumberDto> panelNumbers;
     private List<ImageDto> images;
 
-    // Meta
+    // Status
     private String status;
+    private String rejectionReason;  // populated only when status = REJECTED
+
+    // Audit
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    private String lastUpdatedBy;  // name for surveyors, email for admins
+    private String lastUpdatedBy;    // always "Name (Role)" format
 
     @Data
     @Builder

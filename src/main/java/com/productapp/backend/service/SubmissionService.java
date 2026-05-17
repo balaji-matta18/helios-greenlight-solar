@@ -125,6 +125,78 @@ public class SubmissionService {
 
 
     @Transactional
+    public SubmissionResponse adminApprove(Long id) {
+
+        Submission submission = getSubmissionById(id);
+
+        if (submission.getStatus() != SubmissionStatus.SUBMITTED) {
+            throw new IllegalStateException(
+                    "Only submitted records can be approved. Current status: "
+                            + submission.getStatus());
+        }
+
+        String editorEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        String editorName  = adminRepository.findByEmail(editorEmail)
+                .map(Admin::getUsername).orElse(editorEmail);
+        String editorLabel = editorName + " (Admin)";
+
+        submission.setStatus(SubmissionStatus.APPROVED);
+        submission.setRejectionReason(null);
+        submission.setLastUpdatedBy(editorLabel);
+
+        Submission saved = submissionRepository.save(submission);
+
+        auditLogRepository.save(SubmissionAuditLog.builder()
+                .submission(saved)
+                .editedByName(editorName)
+                .editedByEmail(editorEmail)
+                .editedByRole("ADMIN")
+                .editNote("Approved")
+                .build());
+
+        log.info("Admin {} approved submission id: {}", editorEmail, id);
+        return mapToResponse(saved);
+    }
+
+
+    @Transactional
+    public SubmissionResponse adminReject(Long id, String reason) {
+
+        Submission submission = getSubmissionById(id);
+
+        if (submission.getStatus() != SubmissionStatus.SUBMITTED) {
+            throw new IllegalStateException(
+                    "Only submitted records can be rejected. Current status: "
+                            + submission.getStatus());
+        }
+
+        String editorEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        String editorName  = adminRepository.findByEmail(editorEmail)
+                .map(Admin::getUsername).orElse(editorEmail);
+        String editorLabel = editorName + " (Admin)";
+
+        submission.setStatus(SubmissionStatus.REJECTED);
+        submission.setRejectionReason(reason);
+        submission.setLastUpdatedBy(editorLabel);
+
+        Submission saved = submissionRepository.save(submission);
+
+        auditLogRepository.save(SubmissionAuditLog.builder()
+                .submission(saved)
+                .editedByName(editorName)
+                .editedByEmail(editorEmail)
+                .editedByRole("ADMIN")
+                .editNote("Rejected: " + reason)
+                .build());
+
+        log.info("Admin {} rejected submission id: {} reason: {}", editorEmail, id, reason);
+        return mapToResponse(saved);
+    }
+
+
+    @Transactional
     public void adminDelete(Long id) {
         Submission submission = getSubmissionById(id);
         deleteS3Images(submission);
@@ -446,6 +518,7 @@ public class SubmissionService {
                                 .imageUrl(s3Service.generatePresignedUrl(img.getImageUrl())).build())
                         .collect(Collectors.toList()))
                 .status(s.getStatus().name())
+                .rejectionReason(s.getRejectionReason())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt())
                 .lastUpdatedBy(s.getLastUpdatedBy())

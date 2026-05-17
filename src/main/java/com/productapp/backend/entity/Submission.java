@@ -9,9 +9,9 @@ import java.util.List;
 
 @Entity
 @Table(name = "submissions", indexes = {
-        @Index(name = "idx_submission_surveyor", columnList = "surveyor_id"),
+        @Index(name = "idx_submission_surveyor",       columnList = "surveyor_id"),
         @Index(name = "idx_submission_service_number", columnList = "service_number"),
-        @Index(name = "idx_submission_created_at", columnList = "created_at")
+        @Index(name = "idx_submission_created_at",     columnList = "created_at")
 })
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Submission {
@@ -62,12 +62,18 @@ public class Submission {
     @Builder.Default
     private SubmissionStatus status = SubmissionStatus.PENDING;
 
+    // Reason provided by admin when rejecting — null for all other statuses
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
     // ── Relations ───────────────────────────────────────
-    @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL,
+            orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<SubmissionImage> images = new ArrayList<>();
 
-    @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL,
+            orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<PanelNumber> panelNumbers = new ArrayList<>();
 
@@ -78,7 +84,7 @@ public class Submission {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Stores name for surveyors, email for admins — whoever last touched this record
+    // Always stored as "Name (Role)" — e.g. "Balaji (Admin)", "Varsha (Surveyor)"
     @Column(name = "last_updated_by", length = 100)
     private String lastUpdatedBy;
 
