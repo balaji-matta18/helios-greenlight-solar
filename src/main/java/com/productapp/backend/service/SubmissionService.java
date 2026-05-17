@@ -29,6 +29,7 @@ public class SubmissionService {
     private final SubmissionAuditLogRepository auditLogRepository;
     private final PanelNumberRepository        panelNumberRepository;
     private final SurveyorRepository           surveyorRepository;
+    private final AdminRepository              adminRepository;
     private final S3Service                    s3Service;
 
     private static final List<String> ALLOWED_TYPES = List.of("image/png", "image/jpeg");
@@ -83,6 +84,11 @@ public class SubmissionService {
         String editorEmail = SecurityContextHolder.getContext()
                 .getAuthentication().getName();
 
+        // Look up the admin's display name from their email
+        String editorName = adminRepository.findByEmail(editorEmail)
+                .map(a -> a.getUsername())
+                .orElse(editorEmail);
+
         submission.setServiceNumber(request.getServiceNumber());
         submission.setCustomerName(request.getCustomerName());
         submission.setPhone(request.getPhone());
@@ -106,6 +112,7 @@ public class SubmissionService {
 
         auditLogRepository.save(SubmissionAuditLog.builder()
                 .submission(saved)
+                .editedByName(editorName)
                 .editedByEmail(editorEmail)
                 .editedByRole("ADMIN")
                 .editNote(request.getEditNote())
@@ -157,6 +164,7 @@ public class SubmissionService {
                 .stream()
                 .map(a -> AuditLogResponse.builder()
                         .id(a.getId())
+                        .editedByName(a.getEditedByName())
                         .editedByEmail(a.getEditedByEmail())
                         .editedByRole(a.getEditedByRole())
                         .editNote(a.getEditNote())
@@ -226,7 +234,8 @@ public class SubmissionService {
 
         auditLogRepository.save(SubmissionAuditLog.builder()
                 .submission(saved)
-                .editedByEmail(surveyor.getName())
+                .editedByName(surveyor.getName())
+                .editedByEmail(currentEmail)           // ← actual email now
                 .editedByRole("SURVEYOR")
                 .editNote(null)
                 .build());
@@ -242,11 +251,15 @@ public class SubmissionService {
         Submission submission = getSubmissionById(id);
         validateSurveyorOwnership(submission);
 
-        String surveyorName = submission.getSurveyor() != null
-                ? submission.getSurveyor().getName() : "Surveyor";
+        String currentEmail = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
+
+        String surveyorName = surveyor.getName();
 
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
-        submission.setUpdatedAt(LocalDateTime.now()); // force updatedAt even if only panels changed
+        submission.setUpdatedAt(LocalDateTime.now());
         submission.setLastUpdatedBy(surveyorName);
 
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
@@ -260,7 +273,8 @@ public class SubmissionService {
 
         auditLogRepository.save(SubmissionAuditLog.builder()
                 .submission(saved)
-                .editedByEmail(surveyorName)
+                .editedByName(surveyorName)
+                .editedByEmail(currentEmail)           // ← actual email now
                 .editedByRole("SURVEYOR")
                 .editNote(null)
                 .build());

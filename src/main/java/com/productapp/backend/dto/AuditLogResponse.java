@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 @Builder
 public class AuditLogResponse {
     private Long id;
+    private String editedByName;
     private String editedByEmail;
     private String editedByRole;
     private String editNote;

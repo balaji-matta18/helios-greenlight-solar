@@ -20,7 +20,11 @@ public class SubmissionAuditLog {
     @JoinColumn(name = "submission_id", nullable = false)
     private Submission submission;
 
-    // For admins: their email. For surveyors: their name.
+    // Display name of the editor (admin name or surveyor name)
+    @Column(name = "edited_by_name", length = 100)
+    private String editedByName;
+
+    // Always stores the actual email of whoever made the edit
     @Column(name = "edited_by_email", nullable = false, length = 100)
     private String editedByEmail;
 
