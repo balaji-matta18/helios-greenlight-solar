@@ -26,7 +26,7 @@ import java.util.Map;
 public class AdminController {
 
     private final SubmissionService submissionService;
-    private final ExportService exportService;
+    private final ExportService     exportService;
 
     @Operation(summary = "Create submission record")
     @PostMapping(value = "/submissions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -63,6 +63,24 @@ public class AdminController {
                 submissionService.adminUpdate(id, request,
                         buildImageMap(panelsImage, inverterImage, earthImage,
                                 billImage, aadharImage, docImage1, docImage2)));
+    }
+
+    @Operation(summary = "Approve a submitted submission")
+    @PostMapping("/submissions/{id}/approve")
+    public ResponseEntity<SubmissionResponse> approve(@PathVariable Long id) {
+        return ResponseEntity.ok(submissionService.adminApprove(id));
+    }
+
+    @Operation(summary = "Reject a submitted submission — reason is mandatory")
+    @PostMapping("/submissions/{id}/reject")
+    public ResponseEntity<SubmissionResponse> reject(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        String reason = body.getOrDefault("reason", "").trim();
+        if (reason.isEmpty()) {
+            throw new IllegalArgumentException("Rejection reason is required");
+        }
+        return ResponseEntity.ok(submissionService.adminReject(id, reason));
     }
 
     @Operation(summary = "Delete submission")
@@ -144,8 +162,8 @@ public class AdminController {
 
     private Map<ImageType, MultipartFile> buildImageMap(
             MultipartFile panels, MultipartFile inverter, MultipartFile earth,
-            MultipartFile bill, MultipartFile aadhar,
-            MultipartFile doc1, MultipartFile doc2) {
+            MultipartFile bill,   MultipartFile aadhar,
+            MultipartFile doc1,   MultipartFile doc2) {
         Map<ImageType, MultipartFile> map = new HashMap<>();
         if (panels   != null && !panels.isEmpty())   map.put(ImageType.PANELS,       panels);
         if (inverter != null && !inverter.isEmpty()) map.put(ImageType.INVERTER,     inverter);
