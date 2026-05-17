@@ -84,10 +84,11 @@ public class SubmissionService {
         String editorEmail = SecurityContextHolder.getContext()
                 .getAuthentication().getName();
 
-        // Look up the admin's display name from their email
+        // Resolve admin's display name for consistent "Name (Admin)" format
         String editorName = adminRepository.findByEmail(editorEmail)
-                .map(a -> a.getUsername())
+                .map(Admin::getUsername)
                 .orElse(editorEmail);
+        String editorLabel = editorName + " (Admin)";
 
         submission.setServiceNumber(request.getServiceNumber());
         submission.setCustomerName(request.getCustomerName());
@@ -99,7 +100,7 @@ public class SubmissionService {
         submission.setDistribution(request.getDistribution());
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
         submission.setSurveyorName(request.getSurveyorName());
-        submission.setLastUpdatedBy(editorEmail);
+        submission.setLastUpdatedBy(editorLabel);
 
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
@@ -217,11 +218,13 @@ public class SubmissionService {
             throw new SubmissionNotFoundException(request.getServiceNumber());
         }
 
+        String surveyorLabel = surveyor.getName() + " (Surveyor)";
+
         submission.setSurveyorName(request.getSurveyorName());
         submission.setSurveyor(surveyor);
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
         submission.setStatus(SubmissionStatus.SUBMITTED);
-        submission.setLastUpdatedBy(surveyor.getName());
+        submission.setLastUpdatedBy(surveyorLabel);
 
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
@@ -235,7 +238,7 @@ public class SubmissionService {
         auditLogRepository.save(SubmissionAuditLog.builder()
                 .submission(saved)
                 .editedByName(surveyor.getName())
-                .editedByEmail(currentEmail)           // ← actual email now
+                .editedByEmail(currentEmail)
                 .editedByRole("SURVEYOR")
                 .editNote(null)
                 .build());
@@ -256,11 +259,11 @@ public class SubmissionService {
         Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
                 .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
 
-        String surveyorName = surveyor.getName();
+        String surveyorLabel = surveyor.getName() + " (Surveyor)";
 
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
         submission.setUpdatedAt(LocalDateTime.now());
-        submission.setLastUpdatedBy(surveyorName);
+        submission.setLastUpdatedBy(surveyorLabel);
 
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
@@ -273,13 +276,13 @@ public class SubmissionService {
 
         auditLogRepository.save(SubmissionAuditLog.builder()
                 .submission(saved)
-                .editedByName(surveyorName)
-                .editedByEmail(currentEmail)           // ← actual email now
+                .editedByName(surveyor.getName())
+                .editedByEmail(currentEmail)
                 .editedByRole("SURVEYOR")
                 .editNote(null)
                 .build());
 
-        log.info("Surveyor {} updated submission id: {}", surveyorName, id);
+        log.info("Surveyor {} updated submission id: {}", surveyor.getName(), id);
         return mapToResponse(saved);
     }
 

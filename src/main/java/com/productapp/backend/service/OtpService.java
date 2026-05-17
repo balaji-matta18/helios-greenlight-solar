@@ -25,14 +25,14 @@ import java.time.LocalDateTime;
 @Slf4j
 public class OtpService {
 
-    private final OtpRepository otpRepository;
-    private final JwtService jwtService;
-    private final EmailService emailService;
+    private final OtpRepository      otpRepository;
+    private final JwtService         jwtService;
+    private final EmailService       emailService;
     private final SurveyorRepository surveyorRepository;
 
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-    private static final int OTP_COOLDOWN_SECONDS = 60;
-    private static final int OTP_EXPIRY_MINUTES = 5;
+    private static final SecureRandom SECURE_RANDOM       = new SecureRandom();
+    private static final int          OTP_COOLDOWN_SECONDS = 60;
+    private static final int          OTP_EXPIRY_MINUTES   = 5;
 
     public void sendOtp(String email, OtpType otpType) {
 
@@ -44,13 +44,11 @@ public class OtpService {
 
         String otpValue = String.valueOf(100000 + SECURE_RANDOM.nextInt(900000));
 
-        Otp otp = Otp.builder()
+        otpRepository.save(Otp.builder()
                 .email(email)
                 .otp(otpValue)
                 .otpType(otpType)
-                .build();
-
-        otpRepository.save(otp);
+                .build());
 
         // @Async — returns immediately, email sent in background thread
         emailService.sendOtpEmail(email, otpValue, OTP_EXPIRY_MINUTES);
@@ -82,16 +80,17 @@ public class OtpService {
 
         verifyOtpOnly(email, otpValue, otpType);
 
-        String name = surveyorRepository.findByEmail(email)
-                .map(Surveyor::getName)
-                .orElse(email);
+        Surveyor surveyor = surveyorRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Surveyor not found: " + email));
 
-        String token = jwtService.generateToken(email, "ROLE_SURVEYOR", name);
+        String token = jwtService.generateToken(email, "ROLE_SURVEYOR", surveyor.getName());
 
+        log.info("Surveyor OTP verified, JWT issued for: {}", email);
         return AuthResponse.builder()
                 .token(token)
                 .role("ROLE_SURVEYOR")
-                .mobileNumber(email)
+                .email(email)
+                .name(surveyor.getName())
                 .build();
     }
 

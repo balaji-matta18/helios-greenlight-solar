@@ -1,10 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// AdminService.java
-// FIX (SECURITY): admin login no longer reveals whether an email exists.
-// Previously AdminNotFoundException was thrown for unknown emails, which let
-// an attacker enumerate valid admin emails by watching the error responses.
-// Now both "not found" and "wrong password" return the same generic error.
-// ─────────────────────────────────────────────────────────────────────────────
 package com.productapp.backend.service;
 
 import com.productapp.backend.dto.AdminLoginRequest;
@@ -27,13 +20,12 @@ public class AdminService {
 
     private final AdminRepository adminRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
-    private final OtpService otpService;
+    private final JwtService      jwtService;
+    private final OtpService      otpService;
 
     public ApiResponse login(AdminLoginRequest request) {
 
-        Admin admin = adminRepository.findByEmail(request.getEmail())
-                .orElse(null);
+        Admin admin = adminRepository.findByEmail(request.getEmail()).orElse(null);
 
         // FIX: unified error response — don't reveal whether the email exists
         if (admin == null || !passwordEncoder.matches(request.getPassword(), admin.getPassword())) {
@@ -47,13 +39,20 @@ public class AdminService {
     }
 
     public AuthResponse verify2fa(String email, String otpValue) {
+
         otpService.verifyOtpOnly(email, otpValue, OtpType.ADMIN_2FA);
+
+        Admin admin = adminRepository.findByEmail(email).orElse(null);
+        String adminName = admin != null ? admin.getUsername() : email;
+
         String token = jwtService.generateToken(email, "ROLE_ADMIN");
+
         log.info("Admin 2FA verified, JWT issued for: {}", email);
         return AuthResponse.builder()
                 .token(token)
                 .role("ROLE_ADMIN")
-                .mobileNumber(email)
+                .email(email)
+                .name(adminName)
                 .build();
     }
 }
