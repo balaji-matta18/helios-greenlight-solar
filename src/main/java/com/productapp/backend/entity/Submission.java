@@ -78,6 +78,10 @@ public class Submission {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // Stores name for surveyors, email for admins — whoever last touched this record
+    @Column(name = "last_updated_by", length = 100)
+    private String lastUpdatedBy;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

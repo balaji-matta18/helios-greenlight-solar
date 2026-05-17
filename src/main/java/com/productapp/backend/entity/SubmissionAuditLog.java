@@ -20,12 +20,16 @@ public class SubmissionAuditLog {
     @JoinColumn(name = "submission_id", nullable = false)
     private Submission submission;
 
-    // Trusted — taken from admin JWT token, never from input
+    // For admins: their email. For surveyors: their name.
     @Column(name = "edited_by_email", nullable = false, length = 100)
     private String editedByEmail;
 
-    // Typed by the admin — what they changed / why
-    @Column(name = "edit_note", nullable = false, length = 500)
+    // "ADMIN" or "SURVEYOR" — used to show role badge in edit history
+    @Column(name = "edited_by_role", nullable = false, length = 20)
+    private String editedByRole;
+
+    // Typed by the admin — what they changed / why. Null for surveyor edits.
+    @Column(name = "edit_note", length = 500)
     private String editNote;
 
     @Column(name = "edited_at", nullable = false, updatable = false)

@@ -93,6 +93,7 @@ public class SubmissionService {
         submission.setDistribution(request.getDistribution());
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
         submission.setSurveyorName(request.getSurveyorName());
+        submission.setLastUpdatedBy(editorEmail);
 
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
@@ -106,6 +107,7 @@ public class SubmissionService {
         auditLogRepository.save(SubmissionAuditLog.builder()
                 .submission(saved)
                 .editedByEmail(editorEmail)
+                .editedByRole("ADMIN")
                 .editNote(request.getEditNote())
                 .build());
 
@@ -135,8 +137,6 @@ public class SubmissionService {
     }
 
 
-    // FIX: uses CriteriaBuilder-based findAllFilteredPaged to avoid lower(bytea)
-    // Neon PostgreSQL error that occurs with JPQL LOWER() regardless of casting.
     @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> adminGetAll(
             Long surveyorId, SubmissionStatus status, String division,
@@ -158,6 +158,7 @@ public class SubmissionService {
                 .map(a -> AuditLogResponse.builder()
                         .id(a.getId())
                         .editedByEmail(a.getEditedByEmail())
+                        .editedByRole(a.getEditedByRole())
                         .editNote(a.getEditNote())
                         .editedAt(a.getEditedAt())
                         .build())
@@ -212,6 +213,7 @@ public class SubmissionService {
         submission.setSurveyor(surveyor);
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
         submission.setStatus(SubmissionStatus.SUBMITTED);
+        submission.setLastUpdatedBy(surveyor.getName());
 
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
@@ -221,6 +223,14 @@ public class SubmissionService {
         }
 
         Submission saved = submissionRepository.save(submission);
+
+        auditLogRepository.save(SubmissionAuditLog.builder()
+                .submission(saved)
+                .editedByEmail(surveyor.getName())
+                .editedByRole("SURVEYOR")
+                .editNote(null)
+                .build());
+
         log.info("Surveyor {} submitted: {}", currentEmail, request.getServiceNumber());
         return mapToResponse(saved);
     }
@@ -231,14 +241,31 @@ public class SubmissionService {
                                              Map<ImageType, MultipartFile> imageFiles) throws IOException {
         Submission submission = getSubmissionById(id);
         validateSurveyorOwnership(submission);
+
+        String surveyorName = submission.getSurveyor() != null
+                ? submission.getSurveyor().getName() : "Surveyor";
+
         submission.setInverterSerialNumber(request.getInverterSerialNumber());
+        submission.setUpdatedAt(LocalDateTime.now()); // force updatedAt even if only panels changed
+        submission.setLastUpdatedBy(surveyorName);
+
         updatePanelNumbers(submission, request.getPanelNumber1(), request.getPanelNumber2(),
                 request.getPanelNumber3(), request.getPanelNumber4());
+
         if (imageFiles != null && !imageFiles.isEmpty()) {
             uploadImages(submission, imageFiles);
         }
+
         Submission saved = submissionRepository.save(submission);
-        log.info("Surveyor updated submission id: {}", id);
+
+        auditLogRepository.save(SubmissionAuditLog.builder()
+                .submission(saved)
+                .editedByEmail(surveyorName)
+                .editedByRole("SURVEYOR")
+                .editNote(null)
+                .build());
+
+        log.info("Surveyor {} updated submission id: {}", surveyorName, id);
         return mapToResponse(saved);
     }
 
@@ -253,7 +280,6 @@ public class SubmissionService {
     }
 
 
-    // FIX: replaced findAll() + in-memory filter with proper DB-level paginated query
     @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> surveyorGetOwn(
             SubmissionStatus status, LocalDateTime from, LocalDateTime to, Pageable pageable) {
@@ -269,7 +295,6 @@ public class SubmissionService {
     }
 
 
-    // FIX: replaced findAll() + in-memory filter with proper DB-level paginated query
     @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> surveyorGetToday(Pageable pageable) {
 
@@ -287,13 +312,10 @@ public class SubmissionService {
     }
 
 
-    // FIX (SECURITY): added surveyor ownership check — previously any authenticated
-    // surveyor could fetch any submission by ID just by knowing it.
     @Transactional(readOnly = true)
     public SubmissionResponse getById(Long id) {
         Submission submission = getSubmissionById(id);
 
-        // If called from a SURVEYOR context, enforce ownership
         var auth = SecurityContextHolder.getContext().getAuthentication();
         boolean isSurveyor = auth.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_SURVEYOR"));
@@ -324,8 +346,6 @@ public class SubmissionService {
         }
     }
 
-    // FIX: removed countBySubmissionId() DB call inside loop — use a simple counter instead,
-    // and batch all saves with saveAll() instead of individual save() calls.
     private void savePanelNumbers(Submission s, String p1, String p2, String p3, String p4) {
         List<String> panels = List.of(
                         p1 != null ? p1 : "",
@@ -411,6 +431,7 @@ public class SubmissionService {
                 .status(s.getStatus().name())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt())
+                .lastUpdatedBy(s.getLastUpdatedBy())
                 .build();
     }
 

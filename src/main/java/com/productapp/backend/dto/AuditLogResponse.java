@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public class AuditLogResponse {
     private Long id;
     private String editedByEmail;
+    private String editedByRole;
     private String editNote;
     private LocalDateTime editedAt;
 }

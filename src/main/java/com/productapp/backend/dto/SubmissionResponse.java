@@ -33,6 +33,7 @@ public class SubmissionResponse {
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private String lastUpdatedBy;  // name for surveyors, email for admins
 
     @Data
     @Builder
