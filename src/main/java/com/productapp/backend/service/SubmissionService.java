@@ -261,10 +261,55 @@ public class SubmissionService {
 
         if (submission.getSurveyor() != null &&
                 !submission.getSurveyor().getId().equals(currentSurveyor.getId())) {
+            // If the record is still PENDING and pre-assigned to someone else, give a clear message.
+            // If it has already been submitted/approved/rejected by someone else, hide it for security.
+            if (submission.getStatus() == SubmissionStatus.PENDING) {
+                throw new SubmissionAssignedException(serviceNumber);
+            }
             throw new SubmissionNotFoundException(serviceNumber);
         }
 
         return mapToResponse(submission);
+    }
+
+
+    // ── Assignment methods ───────────────────────────────────────────────────
+
+    @Transactional
+    public SubmissionResponse assignSurveyor(Long submissionId, Long surveyorId) {
+        Submission submission = getSubmissionById(submissionId);
+        if (submission.getStatus() != SubmissionStatus.PENDING) {
+            throw new IllegalStateException(
+                    "Only PENDING records can be assigned. Current status: " + submission.getStatus());
+        }
+        Surveyor surveyor = surveyorRepository.findById(surveyorId)
+                .orElseThrow(() -> new SurveyorNotFoundException(String.valueOf(surveyorId)));
+        submission.setSurveyor(surveyor);
+        log.info("Assigned submission id {} to surveyor {}", submissionId, surveyor.getEmail());
+        return mapToResponse(submissionRepository.save(submission));
+    }
+
+    @Transactional
+    public SubmissionResponse unassignSurveyor(Long submissionId) {
+        Submission submission = getSubmissionById(submissionId);
+        if (submission.getStatus() != SubmissionStatus.PENDING) {
+            throw new IllegalStateException(
+                    "Only PENDING records can be unassigned. Current status: " + submission.getStatus());
+        }
+        submission.setSurveyor(null);
+        log.info("Unassigned surveyor from submission id {}", submissionId);
+        return mapToResponse(submissionRepository.save(submission));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<SubmissionSummaryResponse> getAssignedToMe(Pageable pageable) {
+        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        Surveyor surveyor = surveyorRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new SurveyorNotFoundException(currentEmail));
+        // PENDING records where this surveyor is pre-assigned but has not submitted yet
+        Page<Submission> page = submissionRepository.findBySurveyorFiltered(
+                surveyor.getId(), SubmissionStatus.PENDING, null, null, pageable);
+        return buildPageResponse(page.map(this::mapToSummary));
     }
 
 

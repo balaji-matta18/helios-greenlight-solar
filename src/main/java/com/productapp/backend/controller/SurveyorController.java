@@ -94,6 +94,12 @@ public class SurveyorController {
         return ResponseEntity.ok(submissionService.surveyorGetToday(pageable));
     }
 
+    @Operation(summary = "Get PENDING submissions pre-assigned to the current surveyor")
+    @GetMapping("/submissions/assigned")
+    public ResponseEntity<PageResponse<SubmissionSummaryResponse>> getAssigned(Pageable pageable) {
+        return ResponseEntity.ok(submissionService.getAssignedToMe(pageable));
+    }
+
     @Operation(summary = "Get single submission detail")
     @GetMapping("/submissions/{id}")
     public ResponseEntity<SubmissionResponse> getById(@PathVariable Long id) {
