@@ -90,6 +90,20 @@ public class AdminController {
         return ResponseEntity.ok(new ApiResponse("Submission deleted successfully"));
     }
 
+    @Operation(summary = "Pre-assign a surveyor to a PENDING submission")
+    @PostMapping("/submissions/{id}/assign")
+    public ResponseEntity<SubmissionResponse> assign(
+            @PathVariable Long id,
+            @Valid @RequestBody AssignSurveyorRequest request) {
+        return ResponseEntity.ok(submissionService.assignSurveyor(id, request.getSurveyorId()));
+    }
+
+    @Operation(summary = "Remove pre-assignment from a PENDING submission")
+    @DeleteMapping("/submissions/{id}/assign")
+    public ResponseEntity<SubmissionResponse> unassign(@PathVariable Long id) {
+        return ResponseEntity.ok(submissionService.unassignSurveyor(id));
+    }
+
     @Operation(summary = "Get all submissions with filters")
     @GetMapping("/submissions")
     public ResponseEntity<PageResponse<SubmissionSummaryResponse>> getAll(

@@ -46,6 +46,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(SubmissionAssignedException.class)
+    public ResponseEntity<ErrorResponse> handleSubmissionAssigned(
+            SubmissionAssignedException ex, HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(DuplicateServiceNumberException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateServiceNumber(
             DuplicateServiceNumberException ex, HttpServletRequest request) {
