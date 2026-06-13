@@ -9,5 +9,7 @@ public class StatsResponse {
     private long total;
     private long pending;
     private long submitted;
+    private long approved;
+    private long rejected;
     private long surveyorCount;
 }
