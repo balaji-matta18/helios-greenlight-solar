@@ -28,6 +28,8 @@ public class StatsService {
                 .total(submissionRepository.count())
                 .pending(submissionRepository.countByStatus(SubmissionStatus.PENDING))
                 .submitted(submissionRepository.countByStatus(SubmissionStatus.SUBMITTED))
+                .approved(submissionRepository.countByStatus(SubmissionStatus.APPROVED))
+                .rejected(submissionRepository.countByStatus(SubmissionStatus.REJECTED))
                 .surveyorCount(surveyorRepository.count())
                 .build();
     }
