@@ -278,6 +278,12 @@ public class SubmissionService {
     @Transactional
     public SubmissionResponse assignSurveyor(Long submissionId, Long surveyorId) {
         Submission submission = getSubmissionById(submissionId);
+        
+        if (submission.getSurveyor() != null && submission.getSurveyor().getId().equals(surveyorId)) {
+            log.info("Submission id {} is already assigned to surveyor id {}. Skipping reassignment.", submissionId, surveyorId);
+            return mapToResponse(submission);
+        }
+
         if (submission.getStatus() == SubmissionStatus.APPROVED || submission.getStatus() == SubmissionStatus.SUBMITTED) {
             throw new IllegalStateException(
                     "Cannot assign records that are " + submission.getStatus() + ". Please review first.");
