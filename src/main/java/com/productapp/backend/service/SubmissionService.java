@@ -564,7 +564,7 @@ public class SubmissionService {
                 .section(s.getSection())
                 .distribution(s.getDistribution())
                 .inverterSerialNumber(s.getInverterSerialNumber())
-                .surveyorName(s.getSurveyorName())
+                .surveyorName(s.getSurveyor() != null ? s.getSurveyor().getName() : s.getSurveyorName())
                 .surveyorEmail(s.getSurveyor() != null ? s.getSurveyor().getEmail() : null)
                 .panelNumbers(panelNumberRepository
                         .findBySubmissionIdOrderBySequenceAsc(s.getId()).stream()
@@ -588,7 +588,8 @@ public class SubmissionService {
         return SubmissionSummaryResponse.builder()
                 .id(s.getId()).serviceNumber(s.getServiceNumber())
                 .customerName(s.getCustomerName()).division(s.getDivision())
-                .section(s.getSection()).surveyorName(s.getSurveyorName())
+                .section(s.getSection())
+                .surveyorName(s.getSurveyor() != null ? s.getSurveyor().getName() : s.getSurveyorName())
                 .status(s.getStatus().name()).createdAt(s.getCreatedAt())
                 .build();
     }
