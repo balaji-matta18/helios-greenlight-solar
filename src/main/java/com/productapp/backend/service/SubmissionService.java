@@ -278,9 +278,13 @@ public class SubmissionService {
     @Transactional
     public SubmissionResponse assignSurveyor(Long submissionId, Long surveyorId) {
         Submission submission = getSubmissionById(submissionId);
-        if (submission.getStatus() != SubmissionStatus.PENDING) {
+        if (submission.getStatus() == SubmissionStatus.APPROVED || submission.getStatus() == SubmissionStatus.SUBMITTED) {
             throw new IllegalStateException(
-                    "Only PENDING records can be assigned. Current status: " + submission.getStatus());
+                    "Cannot assign records that are " + submission.getStatus() + ". Please review first.");
+        }
+        if (submission.getStatus() == SubmissionStatus.REJECTED) {
+            submission.setStatus(SubmissionStatus.PENDING);
+            submission.setRejectionReason(null);
         }
         Surveyor surveyor = surveyorRepository.findById(surveyorId)
                 .orElseThrow(() -> new SurveyorNotFoundException(String.valueOf(surveyorId)));
@@ -292,9 +296,13 @@ public class SubmissionService {
     @Transactional
     public SubmissionResponse unassignSurveyor(Long submissionId) {
         Submission submission = getSubmissionById(submissionId);
-        if (submission.getStatus() != SubmissionStatus.PENDING) {
+        if (submission.getStatus() == SubmissionStatus.APPROVED || submission.getStatus() == SubmissionStatus.SUBMITTED) {
             throw new IllegalStateException(
-                    "Only PENDING records can be unassigned. Current status: " + submission.getStatus());
+                    "Cannot unassign records that are " + submission.getStatus() + ". Please review first.");
+        }
+        if (submission.getStatus() == SubmissionStatus.REJECTED) {
+            submission.setStatus(SubmissionStatus.PENDING);
+            submission.setRejectionReason(null);
         }
         submission.setSurveyor(null);
         log.info("Unassigned surveyor from submission id {}", submissionId);
