@@ -35,7 +35,7 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
     @Override
     public Page<Submission> findAllFilteredPaged(
             Long surveyorId, SubmissionStatus status, String serviceNumber,
-            String division, Boolean assigned, LocalDateTime from, LocalDateTime to, Pageable pageable) {
+            String division, String searchQuery, Boolean assigned, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
 
@@ -43,7 +43,7 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
         CriteriaQuery<Submission> dataQuery = cb.createQuery(Submission.class);
         Root<Submission> s = dataQuery.from(Submission.class);
         dataQuery.distinct(true);
-        dataQuery.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, division, assigned, from, to));
+        dataQuery.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, division, searchQuery, assigned, from, to));
         dataQuery.orderBy(cb.desc(s.get("createdAt")));
 
         List<Submission> results = em.createQuery(dataQuery)
@@ -55,7 +55,7 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
         CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
         Root<Submission> cs = countQuery.from(Submission.class);
         countQuery.select(cb.countDistinct(cs));
-        countQuery.where(buildAdminPredicates(cb, cs, surveyorId, status, serviceNumber, division, assigned, from, to));
+        countQuery.where(buildAdminPredicates(cb, cs, surveyorId, status, serviceNumber, division, searchQuery, assigned, from, to));
         Long total = em.createQuery(countQuery).getSingleResult();
 
         return new PageImpl<>(results, pageable, total);
@@ -131,13 +131,13 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
     @Override
     public List<Submission> findAllFilteredForExport(
             Long surveyorId, SubmissionStatus status, String serviceNumber,
-            Boolean assigned, LocalDateTime from, LocalDateTime to) {
+            String division, String searchQuery, Boolean assigned, LocalDateTime from, LocalDateTime to) {
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Submission> cq = cb.createQuery(Submission.class);
         Root<Submission> s = cq.from(Submission.class);
         cq.distinct(true);
-        cq.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, null, assigned, from, to));
+        cq.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, division, searchQuery, assigned, from, to));
         cq.orderBy(cb.asc(s.get("id")));
 
         return em.createQuery(cq).getResultList();
@@ -148,7 +148,7 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
     private Predicate[] buildAdminPredicates(
             CriteriaBuilder cb, Root<Submission> s,
             Long surveyorId, SubmissionStatus status, String serviceNumber,
-            String division, Boolean assigned, LocalDateTime from, LocalDateTime to) {
+            String division, String searchQuery, Boolean assigned, LocalDateTime from, LocalDateTime to) {
 
         List<Predicate> predicates = new ArrayList<>();
 
@@ -173,6 +173,16 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
             predicates.add(cb.like(
                     cb.lower(s.get("division")),
                     "%" + division.toLowerCase() + "%"
+            ));
+        }
+        if (searchQuery != null && !searchQuery.isBlank()) {
+            String pattern = "%" + searchQuery.toLowerCase() + "%";
+            Join<Submission, Surveyor> surveyor = s.join("surveyor", JoinType.LEFT);
+            predicates.add(cb.or(
+                    cb.like(cb.lower(s.get("serviceNumber")), pattern),
+                    cb.like(cb.lower(s.get("customerName")), pattern),
+                    cb.like(cb.lower(s.get("division")), pattern),
+                    cb.like(cb.lower(surveyor.get("name")), pattern)
             ));
         }
         if (from != null) {

@@ -54,15 +54,9 @@ public class ExportService {
                               Boolean assigned, LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, serviceNumber, assigned, from, to);
+                .findAllFilteredForExport(surveyorId, status, serviceNumber, division, null, assigned, from, to);
 
-        // Case-insensitive division filter applied in Java (avoids LOWER(bytea) PostgreSQL type error)
-        if (division != null && !division.isBlank()) {
-            final String divLower = division.toLowerCase();
-            submissions = submissions.stream()
-                    .filter(s -> s.getDivision() != null && s.getDivision().toLowerCase().contains(divLower))
-                    .collect(java.util.stream.Collectors.toList());
-        }
+
 
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -126,15 +120,10 @@ public class ExportService {
                             Boolean assigned, LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, serviceNumber, assigned, from, to);
+                .findAllFilteredForExport(surveyorId, status, serviceNumber, division, null, assigned, from, to);
 
         // Case-insensitive division filter applied in Java (avoids LOWER(bytea) PostgreSQL type error)
-        if (division != null && !division.isBlank()) {
-            final String divLower = division.toLowerCase();
-            submissions = submissions.stream()
-                    .filter(s -> s.getDivision() != null && s.getDivision().toLowerCase().contains(divLower))
-                    .collect(java.util.stream.Collectors.toList());
-        }
+        // Wait, actually division is now applied in database query so I can remove this block!
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             // A3 landscape gives ~1122 x 794 pt — much more room for 18 columns
