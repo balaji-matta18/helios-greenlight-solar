@@ -16,6 +16,7 @@ public interface SubmissionRepositoryCustom {
             SubmissionStatus status,
             String serviceNumber,
             String division,
+            Boolean assigned,
             LocalDateTime from,
             LocalDateTime to,
             Pageable pageable
@@ -43,6 +44,7 @@ public interface SubmissionRepositoryCustom {
             Long surveyorId,
             SubmissionStatus status,
             String serviceNumber,
+            Boolean assigned,
             LocalDateTime from,
             LocalDateTime to
     );

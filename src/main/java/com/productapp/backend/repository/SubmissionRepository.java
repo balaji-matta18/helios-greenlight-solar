@@ -29,15 +29,6 @@ public interface SubmissionRepository
     long countByStatusAndSurveyorIsNull(SubmissionStatus status);
 
     @Query("""
-            SELECT CAST(s.createdAt AS LocalDate), COUNT(s)
-            FROM Submission s
-            WHERE s.createdAt >= :since
-            GROUP BY CAST(s.createdAt AS LocalDate)
-            ORDER BY CAST(s.createdAt AS LocalDate) ASC
-            """)
-    List<Object[]> countByDaySince(@Param("since") LocalDateTime since);
-
-    @Query("""
             SELECT s.surveyor.id, COUNT(s)
             FROM Submission s
             WHERE s.surveyor IS NOT NULL

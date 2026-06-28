@@ -35,7 +35,7 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
     @Override
     public Page<Submission> findAllFilteredPaged(
             Long surveyorId, SubmissionStatus status, String serviceNumber,
-            String division, LocalDateTime from, LocalDateTime to, Pageable pageable) {
+            String division, Boolean assigned, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
 
@@ -43,7 +43,7 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
         CriteriaQuery<Submission> dataQuery = cb.createQuery(Submission.class);
         Root<Submission> s = dataQuery.from(Submission.class);
         dataQuery.distinct(true);
-        dataQuery.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, division, from, to));
+        dataQuery.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, division, assigned, from, to));
         dataQuery.orderBy(cb.desc(s.get("createdAt")));
 
         List<Submission> results = em.createQuery(dataQuery)
@@ -55,7 +55,7 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
         CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
         Root<Submission> cs = countQuery.from(Submission.class);
         countQuery.select(cb.countDistinct(cs));
-        countQuery.where(buildAdminPredicates(cb, cs, surveyorId, status, serviceNumber, division, from, to));
+        countQuery.where(buildAdminPredicates(cb, cs, surveyorId, status, serviceNumber, division, assigned, from, to));
         Long total = em.createQuery(countQuery).getSingleResult();
 
         return new PageImpl<>(results, pageable, total);
@@ -131,13 +131,13 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
     @Override
     public List<Submission> findAllFilteredForExport(
             Long surveyorId, SubmissionStatus status, String serviceNumber,
-            LocalDateTime from, LocalDateTime to) {
+            Boolean assigned, LocalDateTime from, LocalDateTime to) {
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Submission> cq = cb.createQuery(Submission.class);
         Root<Submission> s = cq.from(Submission.class);
         cq.distinct(true);
-        cq.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, null, from, to));
+        cq.where(buildAdminPredicates(cb, s, surveyorId, status, serviceNumber, null, assigned, from, to));
         cq.orderBy(cb.asc(s.get("id")));
 
         return em.createQuery(cq).getResultList();
@@ -148,13 +148,20 @@ public class SubmissionRepositoryCustomImpl implements SubmissionRepositoryCusto
     private Predicate[] buildAdminPredicates(
             CriteriaBuilder cb, Root<Submission> s,
             Long surveyorId, SubmissionStatus status, String serviceNumber,
-            String division, LocalDateTime from, LocalDateTime to) {
+            String division, Boolean assigned, LocalDateTime from, LocalDateTime to) {
 
         List<Predicate> predicates = new ArrayList<>();
 
         if (surveyorId != null) {
             Join<Submission, Surveyor> surveyor = s.join("surveyor", JoinType.LEFT);
             predicates.add(cb.equal(surveyor.get("id"), surveyorId));
+        } else if (assigned != null) {
+            Join<Submission, Surveyor> surveyor = s.join("surveyor", JoinType.LEFT);
+            if (assigned) {
+                predicates.add(cb.isNotNull(surveyor.get("id")));
+            } else {
+                predicates.add(cb.isNull(surveyor.get("id")));
+            }
         }
         if (status != null) {
             predicates.add(cb.equal(s.get("status"), status));
