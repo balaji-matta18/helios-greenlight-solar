@@ -16,6 +16,7 @@ public interface SubmissionRepositoryCustom {
             SubmissionStatus status,
             String serviceNumber,
             String division,
+            String searchQuery,
             Boolean assigned,
             LocalDateTime from,
             LocalDateTime to,
@@ -44,6 +45,8 @@ public interface SubmissionRepositoryCustom {
             Long surveyorId,
             SubmissionStatus status,
             String serviceNumber,
+            String division,
+            String searchQuery,
             Boolean assigned,
             LocalDateTime from,
             LocalDateTime to

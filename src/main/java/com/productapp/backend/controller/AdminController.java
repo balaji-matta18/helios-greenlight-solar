@@ -111,13 +111,14 @@ public class AdminController {
             @RequestParam(required = false) SubmissionStatus status,
             @RequestParam(required = false) String division,
             @RequestParam(required = false) String serviceNumber,
+            @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean assigned,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             Pageable pageable) {
         return ResponseEntity.ok(
                 submissionService.adminGetAll(surveyorId, status, division,
-                        serviceNumber, assigned, from, to, pageable));
+                        serviceNumber, search, assigned, from, to, pageable));
     }
 
     @Operation(summary = "Get single submission detail")
