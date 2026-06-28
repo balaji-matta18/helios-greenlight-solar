@@ -6,6 +6,7 @@ import com.productapp.backend.dto.WeeklyStatsResponse;
 import com.productapp.backend.entity.Surveyor;
 import com.productapp.backend.entity.SubmissionStatus;
 import com.productapp.backend.repository.SubmissionRepository;
+import com.productapp.backend.repository.SubmissionAuditLogRepository;
 import com.productapp.backend.repository.SurveyorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 public class StatsService {
 
     private final SubmissionRepository submissionRepository;
+    private final SubmissionAuditLogRepository auditLogRepository;
     private final SurveyorRepository   surveyorRepository;
 
     public StatsResponse getDashboardStats() {
@@ -40,7 +42,7 @@ public class StatsService {
     public WeeklyStatsResponse getWeeklyStats() {
 
         LocalDateTime since = LocalDate.now().minusDays(6).atStartOfDay();
-        List<Object[]> rows = submissionRepository.countByDaySince(since);
+        List<Object[]> rows = auditLogRepository.countSurveyorSubmissionsByDaySince(since);
 
         Map<LocalDate, Long> countByDate = rows.stream()
                 .collect(Collectors.toMap(r -> (LocalDate) r[0], r -> (Long) r[1]));

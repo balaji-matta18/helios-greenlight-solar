@@ -220,10 +220,10 @@ public class SubmissionService {
     @Transactional(readOnly = true)
     public PageResponse<SubmissionSummaryResponse> adminGetAll(
             Long surveyorId, SubmissionStatus status, String division,
-            String serviceNumber, LocalDateTime from, LocalDateTime to, Pageable pageable) {
+            String serviceNumber, Boolean assigned, LocalDateTime from, LocalDateTime to, Pageable pageable) {
 
         Page<Submission> page = submissionRepository.findAllFilteredPaged(
-                surveyorId, status, serviceNumber, division, from, to, pageable);
+                surveyorId, status, serviceNumber, division, assigned, from, to, pageable);
 
         return buildPageResponse(page.map(this::mapToSummary));
     }

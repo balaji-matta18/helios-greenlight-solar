@@ -51,10 +51,10 @@ public class ExportService {
     @Transactional(readOnly = true)
     public byte[] exportExcel(Long surveyorId, SubmissionStatus status,
                               String division, String serviceNumber,
-                              LocalDateTime from, LocalDateTime to) throws IOException {
+                              Boolean assigned, LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, serviceNumber, from, to);
+                .findAllFilteredForExport(surveyorId, status, serviceNumber, assigned, from, to);
 
         // Case-insensitive division filter applied in Java (avoids LOWER(bytea) PostgreSQL type error)
         if (division != null && !division.isBlank()) {
@@ -123,10 +123,10 @@ public class ExportService {
     @Transactional(readOnly = true)
     public byte[] exportPdf(Long surveyorId, SubmissionStatus status,
                             String division, String serviceNumber,
-                            LocalDateTime from, LocalDateTime to) throws IOException {
+                            Boolean assigned, LocalDateTime from, LocalDateTime to) throws IOException {
 
         List<Submission> submissions = submissionRepository
-                .findAllFilteredForExport(surveyorId, status, serviceNumber, from, to);
+                .findAllFilteredForExport(surveyorId, status, serviceNumber, assigned, from, to);
 
         // Case-insensitive division filter applied in Java (avoids LOWER(bytea) PostgreSQL type error)
         if (division != null && !division.isBlank()) {
