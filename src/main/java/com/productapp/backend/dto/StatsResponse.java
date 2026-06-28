@@ -11,5 +11,6 @@ public class StatsResponse {
     private long submitted;
     private long approved;
     private long rejected;
+    private long unassigned;
     private long surveyorCount;
 }

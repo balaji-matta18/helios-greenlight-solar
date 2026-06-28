@@ -26,6 +26,8 @@ public interface SubmissionRepository
 
     long countByStatus(SubmissionStatus status);
 
+    long countByStatusAndSurveyorIsNull(SubmissionStatus status);
+
     @Query("""
             SELECT CAST(s.createdAt AS LocalDate), COUNT(s)
             FROM Submission s

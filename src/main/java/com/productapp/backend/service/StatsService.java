@@ -24,12 +24,15 @@ public class StatsService {
     private final SurveyorRepository   surveyorRepository;
 
     public StatsResponse getDashboardStats() {
+        long pendingCount = submissionRepository.countByStatus(SubmissionStatus.PENDING);
+        long unassignedCount = submissionRepository.countByStatusAndSurveyorIsNull(SubmissionStatus.PENDING);
         return StatsResponse.builder()
                 .total(submissionRepository.count())
-                .pending(submissionRepository.countByStatus(SubmissionStatus.PENDING))
+                .pending(pendingCount)
                 .submitted(submissionRepository.countByStatus(SubmissionStatus.SUBMITTED))
                 .approved(submissionRepository.countByStatus(SubmissionStatus.APPROVED))
                 .rejected(submissionRepository.countByStatus(SubmissionStatus.REJECTED))
+                .unassigned(unassignedCount)
                 .surveyorCount(surveyorRepository.count())
                 .build();
     }
